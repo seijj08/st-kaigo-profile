@@ -1,0 +1,48 @@
+{
+  "categories": {
+    "A": { "ja": "共感性", "idn": "Empati" },
+    "B": { "ja": "ストレス耐性", "idn": "Ketahanan Stres" },
+    "C": { "ja": "協調性", "idn": "Kerja Sama Tim" },
+    "D": { "ja": "誠実さ", "idn": "Kejujuran" },
+    "E": { "ja": "生活習慣・自立性", "idn": "Kebiasaan Hidup & Kemandirian" },
+    "F": { "ja": "適応力", "idn": "Adaptasi" }
+  },
+  "categoryOrder": ["A", "B", "C", "D", "E", "F"],
+  "questions": [
+    { "qid": "A1", "category": "A", "reverse": false, "ja": "相手が困っているとき、自分から声をかけるほうだ。", "idn": "Saya biasanya menyapa lebih dulu ketika melihat orang lain kesulitan." },
+    { "qid": "A2", "category": "A", "reverse": false, "ja": "年上の人の話を、ゆっくり聞くのが好きだ。", "idn": "Saya suka mendengarkan cerita orang yang lebih tua dengan sabar." },
+    { "qid": "A3", "category": "A", "reverse": false, "ja": "話す前に、相手の気持ちを考えるようにしている。", "idn": "Saya berusaha memikirkan perasaan orang lain sebelum berbicara." },
+    { "qid": "A4", "category": "A", "reverse": true, "ja": "他人の悩みを聞くのは、正直めんどうだと感じる。", "idn": "Sejujurnya, saya merasa repot mendengarkan masalah orang lain." },
+    { "qid": "A5", "category": "A", "reverse": false, "ja": "友達が元気がないと、すぐに気づくほうだ。", "idn": "Saya cepat menyadari jika teman saya sedang tidak bersemangat." },
+
+    { "qid": "B1", "category": "B", "reverse": false, "ja": "大変なことがあっても、気持ちを切り替えるのが早い。", "idn": "Meskipun ada hal yang berat, saya cepat mengubah suasana hati." },
+    { "qid": "B2", "category": "B", "reverse": false, "ja": "注意されたとき、落ち込むより「次はどうするか」を考える。", "idn": "Saat ditegur, saya lebih memikirkan \"apa yang harus dilakukan selanjutnya\" daripada bersedih." },
+    { "qid": "B3", "category": "B", "reverse": false, "ja": "忙しいときでも、体調や気持ちを自分で管理できる。", "idn": "Saat sibuk pun, saya bisa mengatur kondisi tubuh dan perasaan saya sendiri." },
+    { "qid": "B4", "category": "B", "reverse": true, "ja": "予定が急に変わると、強いストレスを感じる。", "idn": "Saya merasa sangat stres jika rencana berubah tiba-tiba." },
+    { "qid": "B5", "category": "B", "reverse": false, "ja": "つらいときも「もう無理」とあきらめずに続けられる。", "idn": "Saya bisa terus bertahan tanpa menyerah meskipun dalam keadaan sulit." },
+
+    { "qid": "C1", "category": "C", "reverse": false, "ja": "リーダーや先生の指示には、まず従うほうだ。", "idn": "Saya biasanya mengikuti instruksi pemimpin atau guru terlebih dahulu." },
+    { "qid": "C2", "category": "C", "reverse": false, "ja": "自分と違う意見でも、チームで決めたことは受け入れる。", "idn": "Saya menerima keputusan tim meskipun berbeda dengan pendapat saya." },
+    { "qid": "C3", "category": "C", "reverse": false, "ja": "グループの中で困っている人がいたら、手伝う。", "idn": "Saya membantu anggota kelompok yang sedang kesulitan." },
+    { "qid": "C4", "category": "C", "reverse": true, "ja": "自分のやり方を変えるのは苦手だ。", "idn": "Saya sulit mengubah cara kerja saya sendiri." },
+    { "qid": "C5", "category": "C", "reverse": false, "ja": "みんなで協力して何かをやりとげるのが好きだ。", "idn": "Saya suka menyelesaikan sesuatu bersama-sama melalui kerja sama." },
+
+    { "qid": "D1", "category": "D", "reverse": false, "ja": "ミスをしたときは、隠さずにすぐ報告する。", "idn": "Ketika berbuat salah, saya segera melaporkannya tanpa menyembunyikan." },
+    { "qid": "D2", "category": "D", "reverse": false, "ja": "誰も見ていなくても、ルールを守る。", "idn": "Saya tetap mematuhi aturan meskipun tidak ada yang melihat." },
+    { "qid": "D3", "category": "D", "reverse": false, "ja": "約束した時間は必ず守るほうだ。", "idn": "Saya selalu menepati waktu yang sudah dijanjikan." },
+    { "qid": "D4", "category": "D", "reverse": true, "socialDesirability": true, "ja": "都合が悪いときは、小さいうそをつくこともある。", "idn": "Kadang saya berbohong kecil jika situasinya tidak menguntungkan." },
+    { "qid": "D5", "category": "D", "reverse": false, "ja": "人に迷惑をかけたら、自分から謝る。", "idn": "Saya meminta maaf lebih dulu jika merepotkan orang lain." },
+
+    { "qid": "E1", "category": "E", "reverse": false, "ja": "部屋の掃除や整理整頓は、自分から進んでやる。", "idn": "Saya membersihkan dan merapikan kamar atas inisiatif sendiri." },
+    { "qid": "E2", "category": "E", "reverse": false, "ja": "家では、料理や洗濯などの家事を自分でやっている。", "idn": "Di rumah, saya mengerjakan sendiri pekerjaan rumah seperti memasak dan mencuci." },
+    { "qid": "E3", "category": "E", "reverse": false, "ja": "身の回りを清潔に保つことは、大事だと思う。", "idn": "Menjaga kebersihan diri dan lingkungan adalah hal yang penting bagi saya." },
+    { "qid": "E4", "category": "E", "reverse": true, "ja": "家事は、家族に言われてからやることが多い。", "idn": "Saya sering mengerjakan pekerjaan rumah hanya setelah diminta oleh keluarga." },
+    { "qid": "E5", "category": "E", "reverse": false, "ja": "毎日、だいたい同じ時間に起きて生活している。", "idn": "Saya bangun dan menjalani hari dengan jadwal yang hampir sama setiap hari." },
+
+    { "qid": "F1", "category": "F", "reverse": false, "ja": "新しい環境には、すぐ慣れるほうだ。", "idn": "Saya cepat terbiasa dengan lingkungan baru." },
+    { "qid": "F2", "category": "F", "reverse": false, "ja": "自分の国と違う文化やルールも、まず受け入れてみる。", "idn": "Saya berusaha menerima budaya dan aturan yang berbeda dari negara saya." },
+    { "qid": "F3", "category": "F", "reverse": false, "ja": "わからない日本語があったら、自分から調べたり聞いたりする。", "idn": "Jika ada bahasa Jepang yang tidak saya mengerti, saya mencari tahu atau bertanya sendiri." },
+    { "qid": "F4", "category": "F", "reverse": true, "ja": "知らない人と話すのは、緊張して苦手だ。", "idn": "Saya gugup dan sulit berbicara dengan orang yang belum saya kenal." },
+    { "qid": "F5", "category": "F", "reverse": false, "ja": "失敗しても、新しいことに挑戦したい。", "idn": "Saya tetap ingin mencoba hal baru meskipun pernah gagal." }
+  ]
+}

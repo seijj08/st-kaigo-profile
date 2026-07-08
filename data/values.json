@@ -1,0 +1,12 @@
+{
+  "cards": [
+    { "vid": "V1", "ja": "人の役に立つこと", "idn": "Bermanfaat bagi orang lain" },
+    { "vid": "V2", "ja": "正直であること", "idn": "Kejujuran" },
+    { "vid": "V3", "ja": "清潔で、きちんとした生活", "idn": "Kebersihan dan keteraturan hidup" },
+    { "vid": "V4", "ja": "学ぶこと・成長すること", "idn": "Belajar dan berkembang" },
+    { "vid": "V5", "ja": "チームの和・良い人間関係", "idn": "Keharmonisan tim dan hubungan yang baik" },
+    { "vid": "V6", "ja": "安定した収入・生活", "idn": "Penghasilan dan kehidupan yang stabil" },
+    { "vid": "V7", "ja": "家族を支えること", "idn": "Menopang keluarga" },
+    { "vid": "V8", "ja": "感謝されること・認められること", "idn": "Dihargai dan diakui orang lain" }
+  ]
+}

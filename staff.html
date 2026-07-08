@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YS Talent - 介護候補者プロファイル管理</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{--primary:#2E9E8F;--primary-dark:#237A6E;--primary-light:#E3F5F2;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans",Helvetica,Arial,sans-serif;margin:0;background:#F5F5F7;color:#1F2937;}
+.gradient-main{background:linear-gradient(135deg,#6FCF97,#2E9E8F);}
+.btn-primary{background:var(--primary);color:#fff;border:none;padding:12px 20px;border-radius:10px;font-weight:600;font-size:15px;cursor:pointer;}
+.btn-primary:hover{background:var(--primary-dark);}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;}
+.btn-secondary{background:#fff;color:#374151;border:1px solid #D1D5DB;padding:8px 14px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;}
+.btn-block{width:100%;}
+.input{width:100%;padding:12px;border:1px solid #D1D5DB;border-radius:10px;font-size:15px;background:#fff;font-family:inherit;}
+.input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(46,158,143,.15);}
+.card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 2px 4px rgba(0,0,0,.04);border:1px solid #E5E7EB;}
+.label{font-size:13px;font-weight:600;color:#4B5563;margin-bottom:6px;display:block;}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:9999px;font-size:11px;font-weight:600;}
+.tag-red{background:#FEE2E2;color:#991B1B;}
+.tag-yellow{background:#FEF3C7;color:#92400E;}
+.tag-green{background:#D1FAE5;color:#065F46;}
+.dashboard-container{max-width:1200px;margin:0 auto;padding:0 16px;}
+table{border-collapse:collapse;width:100%;}
+th,td{padding:8px;text-align:left;font-size:12px;border-bottom:1px solid #F3F4F6;}
+@media print{nav,.no-print{display:none!important;}body{background:#fff;}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/common.js"></script>
+<script>
+const staff={
+  step:'loading',
+  sb:null,
+  session:null,
+  data:null,
+  values:null,
+  entries:[],
+  view:'list',
+  currentId:null,
+  loginError:null,
+  loadError:null,
+  busy:false
+};
+
+async function init(){
+  if(!isSupabaseConfigured()){
+    staff.step='configerror';
+    render();
+    return;
+  }
+  staff.sb=getSupabaseClient();
+  try{
+    const [qRes,vRes]=await Promise.all([fetch('data/questions.json'),fetch('data/values.json')]);
+    staff.data=await qRes.json();
+    staff.values=await vRes.json();
+  }catch(e){
+    staff.step='loaderror';
+    staff.loadError=e.message;
+    render();
+    return;
+  }
+  const {data:{session}}=await staff.sb.auth.getSession();
+  if(session){
+    staff.session=session;
+    staff.step='dashboard';
+    await fetchAllData();
+  }else{
+    staff.step='login';
+  }
+  render();
+}
+
+function render(){
+  const app=document.getElementById('app');
+  if(staff.step==='loading'){app.innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:#9CA3AF;">読み込み中...</div>`;return;}
+  if(staff.step==='configerror'){app.innerHTML=renderConfigError();return;}
+  if(staff.step==='loaderror'){app.innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:#DC2626;padding:20px;text-align:center;">設問データの読み込みに失敗しました。<br>${esc(staff.loadError||'')}</div>`;return;}
+  if(staff.step==='login'){app.innerHTML=renderLogin();return;}
+  if(staff.step==='dashboard'){app.innerHTML=renderDashboard();setTimeout(initChart,50);return;}
+}
+
+function renderConfigError(){
+  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;color:#DC2626;font-size:14px;">
+    js/supabase-config.js に Supabase の URL / anonKey を設定してください。
+  </div>`;
+}
+
+//==========================================================
+// ログイン（Supabase Auth）
+//==========================================================
+function renderLogin(){
+  return `
+  <div style="min-height:100vh;display:flex;flex-direction:column;background:#F5F5F7;">
+    <div class="gradient-main" style="padding:60px 20px 80px;color:#fff;text-align:center;">
+      <div style="font-size:40px;margin-bottom:8px;">🧑‍⚕️</div>
+      <h1 style="font-size:22px;font-weight:800;margin:0 0 4px;">YS Talent 介護候補者プロファイル管理</h1>
+      <p style="font-size:13px;opacity:.95;margin:0;">スタッフ専用ページ（要ログイン）</p>
+    </div>
+    <div style="max-width:400px;width:100%;margin:-60px auto 0;padding:0 16px;flex:1;">
+      <div class="card">
+        <h2 style="font-size:16px;font-weight:700;margin:0 0 14px;">ログイン</h2>
+        <div style="margin-bottom:12px;">
+          <label class="label">メールアドレス</label>
+          <input class="input" id="login-email" type="email" placeholder="staff@example.com">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label class="label">パスワード</label>
+          <input class="input" id="login-password" type="password" placeholder="••••••••">
+        </div>
+        ${staff.loginError?`<p style="color:#DC2626;font-size:12px;margin:0 0 12px;">${esc(staff.loginError)}</p>`:''}
+        <button class="btn-primary btn-block" onclick="doLogin()" ${staff.busy?'disabled':''}>${staff.busy?'ログイン中...':'ログイン →'}</button>
+        <p style="font-size:11px;color:#9CA3AF;margin:14px 0 0;">アカウントはSupabaseダッシュボードの Authentication から発行してください。</p>
+      </div>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:11px;color:#9CA3AF;">© YS Talent</div>
+  </div>`;
+}
+
+async function doLogin(){
+  const email=document.getElementById('login-email').value.trim();
+  const password=document.getElementById('login-password').value;
+  if(!email||!password){staff.loginError='メールアドレスとパスワードを入力してください';render();return;}
+  staff.busy=true;staff.loginError=null;render();
+  const {data,error}=await staff.sb.auth.signInWithPassword({email,password});
+  staff.busy=false;
+  if(error){
+    staff.loginError='ログインに失敗しました: '+error.message;
+    render();
+    return;
+  }
+  staff.session=data.session;
+  staff.step='dashboard';
+  await fetchAllData();
+  render();
+}
+
+async function doLogout(){
+  if(!confirm('ログアウトしますか？'))return;
+  await staff.sb.auth.signOut();
+  staff.session=null;
+  staff.step='login';
+  staff.entries=[];
+  staff.currentId=null;
+  render();
+}
+
+//==========================================================
+// データ取得
+//==========================================================
+async function fetchAllData(){
+  const {data:candidates,error:ce}=await staff.sb.from('candidates').select('*').order('created_at',{ascending:false});
+  const {data:responses,error:re}=await staff.sb.from('responses').select('*');
+  if(ce||re){
+    alert('データ取得に失敗しました: '+((ce&&ce.message)||(re&&re.message)));
+    return;
+  }
+  const respByCand={};
+  (responses||[]).forEach(r=>{respByCand[r.candidate_id]=r;});
+  staff.entries=(candidates||[])
+    .filter(c=>respByCand[c.id])
+    .map(c=>({candidate:c,response:respByCand[c.id]}))
+    .sort((a,b)=>String(b.response.created_at||'').localeCompare(String(a.response.created_at||'')));
+}
+
+//==========================================================
+// ダッシュボード
+//==========================================================
+function renderDashboard(){
+  return `
+  <div style="background:#fff;border-bottom:1px solid #E5E7EB;position:sticky;top:0;z-index:50;">
+    <div class="dashboard-container" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="gradient-main" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;">Y</div>
+        <div>
+          <h1 style="font-size:15px;font-weight:700;margin:0;">介護候補者プロファイル管理</h1>
+          <p style="font-size:11px;color:#6B7280;margin:0;">YSタレント｜FTI候補者プロファイル閲覧</p>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:11px;color:#6B7280;">${esc((staff.session&&staff.session.user&&staff.session.user.email)||'')}</span>
+        <button class="btn-secondary" onclick="fetchAllData().then(render)">🔄 再読込</button>
+        <button class="btn-secondary" onclick="exportCSV()">💾 CSV出力</button>
+        <button class="btn-secondary" onclick="doLogout()">↩ ログアウト</button>
+      </div>
+    </div>
+    <div class="dashboard-container" style="padding:0 16px;display:flex;gap:24px;border-top:1px solid #E5E7EB;">
+      <button onclick="setView('list')" style="padding:12px 0;border:none;background:none;font-size:13px;cursor:pointer;color:${staff.view==='list'?'#2E9E8F':'#6B7280'};font-weight:${staff.view==='list'?700:500};border-bottom:2px solid ${staff.view==='list'?'#2E9E8F':'transparent'};">📋 候補者一覧</button>
+      <button onclick="setView('compare')" style="padding:12px 0;border:none;background:none;font-size:13px;cursor:pointer;color:${staff.view==='compare'?'#2E9E8F':'#6B7280'};font-weight:${staff.view==='compare'?700:500};border-bottom:2px solid ${staff.view==='compare'?'#2E9E8F':'transparent'};">📊 カテゴリ平均比較</button>
+    </div>
+  </div>
+  <div class="dashboard-container" style="padding:20px 16px;">${
+    staff.currentId?renderDetail():
+    staff.view==='list'?renderListView():
+    renderCompareView()
+  }</div>`;
+}
+
+function setView(v){staff.view=v;staff.currentId=null;render();}
+function showDetail(id){staff.currentId=id;render();}
+
+function renderListView(){
+  if(staff.entries.length===0){
+    return `<div class="card" style="text-align:center;padding:40px 20px;">
+      <div style="font-size:48px;margin-bottom:12px;">📋</div>
+      <h3 style="margin:0 0 8px;">提出データがまだありません</h3>
+      <p style="font-size:13px;color:#6B7280;margin:0;">候補者がスマホで診断を完了すると、ここに表示されます。</p>
+    </div>`;
+  }
+  return `
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 14px;">候補者一覧 <span style="font-size:13px;color:#6B7280;font-weight:400;">（${staff.entries.length}名）</span></h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
+    ${staff.entries.map(({candidate,response})=>{
+      const flags=response.flags||[];
+      return `
+      <div class="card" style="cursor:pointer;" onclick="showDetail('${candidate.id}')">
+        <h3 style="margin:0;font-size:15px;font-weight:700;">${esc(candidate.name)}</h3>
+        <p style="margin:2px 0 0;font-size:11px;color:#9CA3AF;">${esc(candidate.province)}｜生年月日: ${esc(candidate.birth_date)}</p>
+        <p style="margin:2px 0 8px;font-size:10px;color:#9CA3AF;">提出: ${formatDateTime(response.created_at)}</p>
+        ${flags.length>0?`<div style="display:flex;flex-wrap:wrap;gap:4px;">${flags.map(f=>`<span class="tag tag-yellow">⚠ ${esc(f.label)}</span>`).join('')}</div>`:'<div style="font-size:11px;color:#10B981;font-weight:600;">✓ 信頼性フラグなし</div>'}
+      </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function renderDetail(){
+  const entry=staff.entries.find(e=>e.candidate.id===staff.currentId);
+  if(!entry)return `<button class="btn-secondary" onclick="staff.currentId=null;render()">← 一覧に戻る</button>`;
+  const {candidate,response}=entry;
+  const scores=categoryScores(response.answers,staff.data.questions,staff.data.categoryOrder);
+  const flags=response.flags||[];
+  const valueCards=(response.values_top3||[]).map(vid=>staff.values.cards.find(c=>c.vid===vid)).filter(Boolean);
+
+  return `
+  <div style="margin-bottom:16px;" class="no-print">
+    <button class="btn-secondary" onclick="staff.currentId=null;render()">← 一覧に戻る</button>
+    <button class="btn-secondary" style="float:right;" onclick="window.print()">🖨 印刷 / PDF</button>
+    <button class="btn-secondary" style="float:right;margin-right:6px;color:#DC2626;border-color:#FECACA;" onclick="deleteCandidate('${candidate.id}')">削除</button>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <h2 style="font-size:22px;font-weight:800;margin:0 0 4px;">${esc(candidate.name)}</h2>
+    <p style="font-size:13px;color:#6B7280;margin:0 0 2px;">出身地: ${esc(candidate.province)}｜生年月日: ${esc(candidate.birth_date)}</p>
+    <p style="font-size:11px;color:#9CA3AF;margin:0;">提出: ${formatDateTime(response.created_at)}｜回答時間: ${response.duration_sec!=null?response.duration_sec+'秒':'-'}</p>
+  </div>
+
+  ${flags.length>0?`
+  <div class="card" style="margin-bottom:16px;border-left:4px solid #F59E0B;">
+    <h3 style="font-size:14px;font-weight:700;margin:0 0 8px;">⚠ 信頼性フラグ</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">${flags.map(f=>`<span class="tag tag-yellow">${esc(f.label)}</span>`).join('')}</div>
+    <p style="font-size:11px;color:#9CA3AF;margin:8px 0 0;">※ 合否判定に直結させず、面接時の深掘り材料としてご利用ください。</p>
+  </div>`:''}
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;">📊 6軸レーダーチャート</h3>
+      <canvas id="cat-radar" data-scores='${JSON.stringify(scores)}'></canvas>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;">🎯 価値観トップ3</h3>
+      ${valueCards.length===0?'<p style="font-size:12px;color:#9CA3AF;">未回答</p>':valueCards.map((c,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;">${esc(c.ja)}</div>
+            <div style="font-size:11px;color:#9CA3AF;">${esc(c.idn)}</div>
+          </div>
+        </div>`).join('')}
+      <h3 style="font-size:14px;font-weight:700;margin:16px 0 10px;">📈 カテゴリ平均</h3>
+      ${staff.data.categoryOrder.map(c=>`
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;">
+          <span>${esc(staff.data.categories[c].ja)}</span><span style="font-weight:600;">${scores[c].toFixed(1)}</span>
+        </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;">📝 自由記述</h3>
+    <p style="font-size:13px;color:#1F2937;white-space:pre-wrap;margin:0;">${response.free_text?esc(response.free_text):'<em style="color:#9CA3AF;">未回答</em>'}</p>
+  </div>
+
+  <div class="card">
+    <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;">📋 全30問 素点一覧</h3>
+    <table>
+      <thead><tr><th>No</th><th>カテゴリ</th><th>質問</th><th>素点</th><th>逆転後</th></tr></thead>
+      <tbody>
+        ${staff.data.questions.map(q=>{
+          const raw=response.answers[q.qid];
+          const scored=raw!=null?(q.reverse?reversedValue(raw):raw):null;
+          return `<tr>
+            <td>${esc(q.qid)}</td>
+            <td>${esc(staff.data.categories[q.category].ja)}</td>
+            <td>${esc(q.ja)}</td>
+            <td>${raw!=null?raw:'-'}${q.reverse?' (R)':''}</td>
+            <td>${scored!=null?scored:'-'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function initChart(){
+  const c=document.getElementById('cat-radar');
+  if(!c)return;
+  const scores=JSON.parse(c.dataset.scores);
+  const labels=staff.data.categoryOrder.map(k=>staff.data.categories[k].ja);
+  const data=staff.data.categoryOrder.map(k=>scores[k]);
+  if(c._chart)c._chart.destroy();
+  c._chart=new Chart(c,{
+    type:'radar',
+    data:{labels,datasets:[{label:'スコア',data,backgroundColor:'rgba(46,158,143,.2)',borderColor:'#2E9E8F',borderWidth:2,pointBackgroundColor:'#2E9E8F',pointRadius:3}]},
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{r:{min:1,max:5,beginAtZero:false,ticks:{stepSize:1,backdropColor:'transparent',font:{size:9}},pointLabels:{font:{size:10}}}}}
+  });
+}
+
+//==========================================================
+// カテゴリ平均比較表
+//==========================================================
+function renderCompareView(){
+  if(staff.entries.length===0){
+    return `<div class="card" style="text-align:center;padding:40px;"><p style="font-size:13px;color:#6B7280;">比較する候補者データがありません。</p></div>`;
+  }
+  return `
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 14px;">カテゴリ平均比較</h2>
+    <div class="card" style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>氏名</th>
+          ${staff.data.categoryOrder.map(c=>`<th>${esc(staff.data.categories[c].ja)}</th>`).join('')}
+          <th>フラグ数</th>
+        </tr></thead>
+        <tbody>
+        ${staff.entries.map(({candidate,response})=>{
+          const scores=categoryScores(response.answers,staff.data.questions,staff.data.categoryOrder);
+          const flagCount=(response.flags||[]).length;
+          return `<tr style="cursor:pointer;" onclick="showDetail('${candidate.id}')">
+            <td>${esc(candidate.name)}</td>
+            ${staff.data.categoryOrder.map(c=>`<td>${scores[c].toFixed(1)}</td>`).join('')}
+            <td>${flagCount>0?`<span class="tag tag-yellow">${flagCount}</span>`:'-'}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+//==========================================================
+// CSVエクスポート
+//==========================================================
+function csvField(v){
+  const s=v==null?'':String(v);
+  return '"'+s.replace(/"/g,'""')+'"';
+}
+function exportCSV(){
+  const header=['氏名','生年月日','出身州','提出日時',
+    ...staff.data.categoryOrder.map(c=>staff.data.categories[c].ja),
+    '価値観1位','価値観2位','価値観3位','自由記述','信頼性フラグ'];
+  const rows=staff.entries.map(({candidate,response})=>{
+    const scores=categoryScores(response.answers,staff.data.questions,staff.data.categoryOrder);
+    const valueCards=(response.values_top3||[]).map(vid=>staff.values.cards.find(c=>c.vid===vid));
+    const flags=(response.flags||[]).map(f=>f.label).join('; ');
+    return [
+      candidate.name,candidate.birth_date,candidate.province,formatDateTime(response.created_at),
+      ...staff.data.categoryOrder.map(c=>scores[c].toFixed(1)),
+      valueCards[0]?valueCards[0].ja:'',valueCards[1]?valueCards[1].ja:'',valueCards[2]?valueCards[2].ja:'',
+      response.free_text||'',flags
+    ];
+  });
+  const csv=[header,...rows].map(r=>r.map(csvField).join(',')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='kaigo-candidates-'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  URL.revokeObjectURL(url);
+}
+
+//==========================================================
+// 削除
+//==========================================================
+async function deleteCandidate(id){
+  if(!confirm('この候補者データを削除しますか？（元に戻せません）'))return;
+  const {error}=await staff.sb.from('candidates').delete().eq('id',id);
+  if(error){alert('削除に失敗しました: '+error.message);return;}
+  staff.currentId=null;
+  await fetchAllData();
+  render();
+}
+
+init();
+</script>
+</body>
+</html>
