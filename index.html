@@ -315,14 +315,16 @@ async function submitQuiz(){
     const durationSec=Math.round((Date.now()-quiz.startTime)/1000);
     const flags=detectFlags(quiz.answers,quiz.data.questions,quiz.data.categoryOrder,durationSec);
     const sb=getSupabaseClient();
-    const {data:candidateRow,error:candErr}=await sb.from('candidates').insert({
+    const candidateId=crypto.randomUUID();
+    const {error:candErr}=await sb.from('candidates').insert({
+      id:candidateId,
       name:quiz.candidate.name,
       birth_date:quiz.candidate.birthDate,
       province:quiz.candidate.province
-    }).select().single();
+    });
     if(candErr)throw candErr;
     const {error:respErr}=await sb.from('responses').insert({
-      candidate_id:candidateRow.id,
+      candidate_id:candidateId,
       answers:quiz.answers,
       values_top3:quiz.valueOrder,
       free_text:quiz.freeText||null,
