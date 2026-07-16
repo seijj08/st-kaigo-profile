@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>YS Talent Kaigo - Profil Diri</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--primary:#2A9D8F;--primary-dark:#1E7168;--primary-light:#E6F4F1;--accent:#1B4F72;--success:#27AE60;--warning:#F39C12;--danger:#E74C3C;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans",Helvetica,Arial,sans-serif;margin:0;background:#F5F5F7;color:#1F2937;}
+.gradient-pink{background:linear-gradient(135deg,#9AD5CB,#2A9D8F);}
+.btn-primary{background:#2A9D8F;color:#fff;border:none;padding:14px 20px;border-radius:12px;font-weight:600;font-size:16px;cursor:pointer;transition:all .2s;display:inline-block;text-align:center;}
+.btn-primary:hover{background:#1E7168;}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;}
+.btn-secondary{background:#fff;color:#374151;border:1px solid #D1D5DB;padding:12px 20px;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;}
+.btn-block{width:100%;}
+.option-btn{display:block;width:100%;padding:16px;background:#fff;border:2px solid #E5E7EB;border-radius:12px;text-align:left;font-size:15px;cursor:pointer;transition:all .15s;margin-bottom:10px;line-height:1.4;font-family:inherit;color:#1F2937;}
+.option-btn:hover{border-color:#2A9D8F;background:#E6F4F1;}
+.option-btn.selected{border-color:#2A9D8F;background:#E6F4F1;color:#1E7168;font-weight:600;}
+.progress-bar{height:6px;background:#E5E7EB;border-radius:3px;overflow:hidden;}
+.progress-fill{height:100%;background:linear-gradient(to right,#9AD5CB,#2A9D8F);transition:width .3s;}
+.input,.textarea{width:100%;padding:14px;border:1px solid #D1D5DB;border-radius:10px;font-size:16px;background:#fff;font-family:inherit;}
+.input:focus,.textarea:focus{outline:none;border-color:#2A9D8F;box-shadow:0 0 0 3px rgba(42,157,143,.15);}
+.card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 2px 4px rgba(0,0,0,.04);border:1px solid #E5E7EB;}
+.label{font-size:13px;font-weight:600;color:#4B5563;margin-bottom:6px;display:block;}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:9999px;font-size:11px;font-weight:600;}
+.tag-green{background:#D1FAE5;color:#065F46;}
+.tag-yellow{background:#FEF3C7;color:#92400E;}
+.tag-red{background:#FEE2E2;color:#991B1B;}
+.tag-blue{background:#DBEAFE;color:#1E40AF;}
+.tag-gray{background:#E5E7EB;color:#374151;}
+.score-bar-bg{height:8px;background:#E5E7EB;border-radius:4px;overflow:hidden;}
+.score-bar-fill{height:100%;background:linear-gradient(to right,#9AD5CB,#2A9D8F);}
+.fade-in{animation:fadeIn .25s ease-out;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+.quiz-container{max-width:520px;margin:0 auto;padding:0 16px;}
+.dashboard-container{max-width:1280px;margin:0 auto;padding:0 16px;}
+@media print{nav,.no-print{display:none!important;}body{background:#fff;}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+//==========================================================
+// データ設定
+//==========================================================
+const STORAGE_KEY='yst-kaigo-assess-v1';
+const SETTINGS_KEY='yst-kaigo-settings-v1';
+const MODE=(new URLSearchParams(location.search)).get('mode')==='quiz'?'quiz':'admin';
+
+// 設定（バックエンドURL・ユーザ名）
+// ============================================================
+// 🔧 管理者設定ゾーン
+// ============================================================
+const CONFIG = {
+  // ▼▼▼ Supabase設定: プロジェクトのURLとanonキーを貼り付けてください ▼▼▼
+  //     (Supabase Dashboard → Settings → API で確認できます)
+  //     anonキーは公開前提のキーです。データ保護はRLSポリシーが担います。
+  supabaseUrl: '',
+  supabaseAnonKey: '',
+  teamMembers: [
+    '前田','小島','柳','鈴木','松本','木下','宮崎','石橋',
+    'ランディ','エコ','シャナ','YST-1','YST-2','FTI-1','FTI-2'
+  ],
+  sharedPin: '',
+  appName: 'YS Talent 介護候補者プロファイル管理',
+  appSubtitle: '特定技能介護 人物評価システム'
+};
+// ============================================================
+let settings=loadSettings();
+// Supabaseクライアント初期化
+const sb=(CONFIG.supabaseUrl&&CONFIG.supabaseAnonKey&&window.supabase)
+  ? window.supabase.createClient(CONFIG.supabaseUrl,CONFIG.supabaseAnonKey)
+  : null;
+let sbSession=null; // 認証セッション(管理者のみ)
+function getBackendUrl(){
+  // 互換用: バックエンド設定有無のフラグとして各所で使用
+  return sb?'supabase':'';
+}
+
+// 既存メンバーの会社フィルタ（詳細画面で使用）
+function loadCompatFilter(){try{return JSON.parse(localStorage.getItem('yst-kaigo-compat-filter'))||{};}catch(e){return {};}}
+function saveCompatFilter(f){localStorage.setItem('yst-kaigo-compat-filter',JSON.stringify(f));}
+function toggleCompatCompany(c){const f=loadCompatFilter();f[c]=!f[c];saveCompatFilter(f);render();}
+function resetCompatFilter(){localStorage.removeItem('yst-kaigo-compat-filter');render();}
+function isLoggedIn(){
+  if(sb)return !!(sbSession&&settings&&settings.userName);
+  return !!(settings&&settings.userName&&settings.loginAt); // ローカルモード
+}
+
+function loadSettings(){try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{};}catch(e){return{};}}
+function saveSettings(){localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}
+
+// 同期状態
+const sync={lastPullAt:null,lastPushAt:null,syncing:false,error:null,pendingPush:false};
+let pushTimer=null;
+let pullTimer=null;
+
+async function syncPull(silent){
+  if(!sb||!sbSession)return;
+  sync.syncing=true;updateSyncBadge();
+  try{
+    const [subRes,memRes]=await Promise.all([
+      sb.from('submissions').select('data'),
+      sb.from('members').select('data')
+    ]);
+    if(subRes.error)throw new Error(subRes.error.message);
+    if(memRes.error)throw new Error(memRes.error.message);
+    state.submissions=mergeById(state.submissions,(subRes.data||[]).map(r=>r.data));
+    state.members=mergeById(state.members,(memRes.data||[]).map(r=>r.data),true);
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+    sync.lastPullAt=new Date();sync.error=null;
+    if(!silent&&MODE==='admin')render();
+  }catch(e){sync.error=e.message;console.error('Pull error:',e);}
+  finally{sync.syncing=false;updateSyncBadge();}
+}
+
+// Pull と Push を両方実行（クリック用）
+async function syncBoth(){
+  if(sync.syncing)return;
+  await syncPush();
+  await syncPull();
+}
+
+function toRow(r){return {id:r.id,updated_at:r.updatedAt||r.submittedAt||new Date().toISOString(),name:r.name||'',data:r};}
+async function syncPush(){
+  if(!sb||!sbSession){sync.pendingPush=false;return;}
+  sync.syncing=true;sync.pendingPush=false;updateSyncBadge();
+  try{
+    const subs=(state.submissions||[]).filter(r=>r&&r.id).map(toRow);
+    const mems=(state.members||[]).filter(r=>r&&r.id).map(toRow);
+    if(subs.length){const r1=await sb.from('submissions').upsert(subs,{onConflict:'id'});if(r1.error)throw new Error(r1.error.message);}
+    if(mems.length){const r2=await sb.from('members').upsert(mems,{onConflict:'id'});if(r2.error)throw new Error(r2.error.message);}
+    sync.lastPushAt=new Date();sync.error=null;
+  }catch(e){sync.error=e.message;console.error('Push error:',e);}
+  finally{sync.syncing=false;updateSyncBadge();}
+}
+
+function schedulePush(){
+  sync.pendingPush=true;updateSyncBadge();
+  if(pushTimer)clearTimeout(pushTimer);
+  pushTimer=setTimeout(syncPush,1500);
+}
+
+// ID基準でマージ。updatedAt の新しい方を残す
+function mergeById(localArr,remoteArr,preserveLocalOnly){
+  const map={};
+  (localArr||[]).forEach(it=>{if(it&&it.id)map[it.id]=it;});
+  (remoteArr||[]).forEach(it=>{
+    if(!it||!it.id)return;
+    const ex=map[it.id];
+    if(!ex){map[it.id]=it;return;}
+    const ru=it.updatedAt||it.submittedAt||'';
+    const lu=ex.updatedAt||ex.submittedAt||'';
+    if(ru>lu)map[it.id]=it;
+  });
+  return Object.values(map);
+}
+
+function updateSyncBadge(){
+  const el=document.getElementById('sync-badge');if(!el)return;
+  if(!getBackendUrl()){el.innerHTML='<span style="color:#9CA3AF;font-size:11px;">🔌 ローカル保存</span>';return;}
+  if(sync.error){el.innerHTML='<span style="color:#DC2626;font-size:11px;cursor:pointer;text-decoration:underline;" title="クリックで強制同期" onclick="syncBoth()">⚠ 同期エラー（クリックで再試行）</span>';return;}
+  if(sync.syncing){el.innerHTML='<span style="color:#2563EB;font-size:11px;">🔄 同期中…</span>';return;}
+  if(sync.pendingPush){el.innerHTML='<span style="color:#F59E0B;font-size:11px;">⏳ 保存待機</span>';return;}
+  if(sync.lastPullAt||sync.lastPushAt){
+    const last=Math.max(sync.lastPullAt||0,sync.lastPushAt||0);
+    const secs=Math.floor((Date.now()-last)/1000);
+    const t=secs<60?secs+'秒前':secs<3600?Math.floor(secs/60)+'分前':Math.floor(secs/3600)+'時間前';
+    el.innerHTML='<span style="color:#059669;font-size:11px;">✓ 同期済み ('+t+')</span>';
+    return;
+  }
+  el.innerHTML='<span style="color:#9CA3AF;font-size:11px;">未同期</span>';
+}
+
+// 1分ごとに自動pull、5秒ごとにバッジ更新
+setInterval(()=>{updateSyncBadge();},5000);
+setInterval(()=>{if(MODE==='admin'&&getBackendUrl()&&!sync.syncing&&isLoggedIn())syncPull(true);},60000);
+
+// 特性
+const TRAITS={
+  consc:{id:'Ketelitian & Perencanaan',ja:'誠実性・計画性'},
+  agree:{id:'Keramahan & Kerjasama',ja:'協調性'},
+  emo:  {id:'Stabilitas Emosi',ja:'情緒安定性'},
+  clean:{id:'Kebersihan & Rapi',ja:'清潔感・整頓'},
+  extra:{id:'Ekstraversi (Sosial)',ja:'外向性'},
+  rule: {id:'Disiplin Aturan',ja:'規範意識'},
+  integ:{id:'Integritas (Jujur)',ja:'誠実・正直さ'},
+  comm: {id:'Komunikasi',ja:'コミュニケーション'},
+  resil:{id:'Daya Tahan Stres',ja:'ストレス耐性'},
+  empathy:{id:'Empati & Kepedulian',ja:'共感・思いやり'},
+  careAcc:{id:'Penerimaan Tugas Perawatan',ja:'介助受容性'},
+  fin:  {id:'Manajemen Keuangan',ja:'金銭管理'},
+  long: {id:'Komitmen Jangka Panjang',ja:'長期就労意欲'},
+  fam:  {id:'Ikatan Keluarga',ja:'家族との絆'}
+};
+
+const RISKS={
+  alc:    {id:'Risiko Alkohol',ja:'飲酒リスク'},
+  smoke:  {id:'Merokok',ja:'喫煙'},
+  digi:   {id:'Ketergantungan HP',ja:'スマホ依存傾向'},
+  avoid:  {id:'Hindari Konflik',ja:'対立回避傾向'},
+  impulse:{id:'Impulsif (Tidak Sabar)',ja:'衝動性・短気'},
+  revenge:{id:'Orientasi Balas Dendam',ja:'見返し・復讐心'}
+};
+
+// 動機ドライブ（深層動機 / 4軸）
+const DRIVES={
+  money:   {id:'Dorongan Uang',ja:'金銭ドライブ',color:'#F59E0B'},
+  prestige:{id:'Dorongan Pengakuan',ja:'承認・プライドドライブ',color:'#EC4899'},
+  freedom: {id:'Dorongan Kebebasan',ja:'自由ドライブ',color:'#8B5CF6'},
+  relation:{id:'Dorongan Hubungan',ja:'関係ドライブ',color:'#10B981'}
+};
+
+// セクション
+const SECTIONS={
+  '1':{id:'Kebiasaan Harian',ja:'日常習慣',icon:'🌅'},
+  '2':{id:'Hubungan dengan Orang',ja:'対人関係',icon:'🤝'},
+  '3':{id:'Cara Hadapi Stres',ja:'ストレス対処',icon:'💪'},
+  '4':{id:'Keuangan & Rencana',ja:'金銭・計画性',icon:'💰'},
+  '5':{id:'Hiburan & Gaya Hidup',ja:'余暇・生活様式',icon:'🎵'},
+  '6':{id:'Nilai & Pekerjaan',ja:'価値観・仕事',icon:'⚖️'},
+  '7':{id:'Situasi Perawatan (Skenario)',ja:'介護シチュエーション',icon:'🏥'},
+  '8':{id:'Keluarga',ja:'家族',icon:'👨‍👩‍👧'},
+  '9':{id:'Jawaban Cepat (Insting)',ja:'即答・本能',icon:'⚡'}
+};
+
+// 質問定義 (44問: 35択一 + 10即答 + 3自由記述)
+// s = trait scoring (例: {consc:2, fin:1})
+const Q=(id,sec,t_id,t_ja,opts)=>({id,sec,text:{id:t_id,ja:t_ja},options:opts.map(o=>({id:o[0],ja:o[1],s:o[2]||{}}))});
+const T=(id,sec,t_id,t_ja,placeholder_id,placeholder_ja)=>({id,sec,type:'text',text:{id:t_id,ja:t_ja},placeholder:{id:placeholder_id,ja:placeholder_ja}});
+
+const QUESTIONS=[
+//----- セクション1: Kebiasaan Harian (日常習慣) -----
+Q('q1','1','Pada hari kerja, jam berapa Anda biasanya bangun?','平日は何時に起きますか？',[
+  ['Sebelum jam 5 pagi','5時より前',{consc:2}],
+  ['Antara jam 5–7','5〜7時',{consc:1}],
+  ['Antara jam 7–9','7〜9時',{}],
+  ['Tergantung mood / hari','日や気分による',{consc:-2}]
+]),
+Q('q2','1','Hal pertama yang Anda lakukan setelah bangun?','起きて最初にすること？',[
+  ['Sholat / berdoa','お祈り',{rule:2,fam:1}],
+  ['Mandi & rapikan diri','シャワー・身支度',{clean:2,consc:1}],
+  ['Cek HP / media sosial','スマホ・SNSをチェック',{digi:2}],
+  ['Sarapan / minum kopi','朝食・コーヒー',{}]
+]),
+Q('q3','1','Seberapa sering Anda merapikan kamar Anda sendiri?','自分の部屋の片付け頻度は？',[
+  ['Setiap hari','毎日',{clean:2,consc:1}],
+  ['2–3 kali seminggu','週2〜3回',{clean:1}],
+  ['Sekali seminggu','週1回',{}],
+  ['Hanya kalau sudah berantakan','散らかった時だけ',{clean:-2}]
+]),
+Q('q4','1','Sebelum tidur malam, biasanya Anda…','寝る前は普段…',[
+  ['Langsung tidur tanpa apa-apa','すぐ寝る・何もしない',{consc:1}],
+  ['Makan camilan / minum susu','お菓子・牛乳を取る',{}],
+  ['Baca buku / dengar musik tenang','読書・静かな音楽',{}],
+  ['Main HP atau sosmed','スマホ・SNS',{digi:2,consc:-1}]
+]),
+Q('q5','1','Bagaimana Anda menjaga penampilan?','身だしなみ・服装について',[
+  ['Selalu rapi, bahkan di rumah','家でも常に整える',{clean:2}],
+  ['Rapi saat keluar atau kerja','外出時・仕事時は整える',{clean:1}],
+  ['Yang penting bersih, tidak perlu rapi','清潔ならOK',{}],
+  ['Saya tidak terlalu peduli','あまり気にしない',{clean:-2}]
+]),
+
+//----- セクション2: Hubungan dengan Orang Lain (対人関係) -----
+Q('q6','2','Teman sekamar Anda meninggalkan dapur kotor. Apa yang Anda lakukan?','同居人がキッチンを汚しっぱなし。あなたなら？',[
+  ['Bersihkan sendiri tanpa bicara apa-apa','黙って自分で掃除',{agree:1,avoid:2}],
+  ['Bersihkan dulu, lalu bicarakan baik-baik','まず掃除→後で丁寧に話す',{agree:2,comm:2}],
+  ['Tinggalkan saja, tunggu dia bersihkan','そのまま置いておく',{avoid:1}],
+  ['Tegur dia dengan tegas saat itu juga','その場ではっきり注意',{comm:1}]
+]),
+Q('q7','2','Dalam grup teman, peran Anda biasanya?','友人グループでの役割は？',[
+  ['Saya yang memimpin / mengambil keputusan','リーダー・決める側',{extra:2,comm:1}],
+  ['Saya yang mengusulkan ide-ide','アイディアを出す側',{extra:1,comm:1}],
+  ['Saya pendengar dan penjaga harmoni','聞き役・調和役',{agree:2}],
+  ['Saya ikut saja, tidak ribet','流れに任せる',{}]
+]),
+Q('q8','2','Saat pendapat Anda berbeda dengan rekan kerja…','同僚と意見が違うとき…',[
+  ['Saya tetap pada pendapat, ini penting','自分の意見を貫く',{comm:1}],
+  ['Jelaskan pendapat, cari titik tengah','説明して折衷案を探す',{comm:2,agree:1}],
+  ['Ikuti pendapatnya, tidak ingin ribut','相手に従う、争いたくない',{agree:1,avoid:2}],
+  ['Minta atasan yang memutuskan','上司に判断を委ねる',{rule:1}]
+]),
+Q('q9','2','Saat ada teman yang sedang sedih…','友人が悲しんでいるとき…',[
+  ['Dengarkan saja, tanpa banyak komentar','静かに聞く',{empathy:2,agree:1}],
+  ['Beri saran agar dia merasa lebih baik','助言する',{comm:1}],
+  ['Ajak dia keluar agar lupakan masalah','気晴らしに連れ出す',{extra:1}],
+  ['Saya tidak nyaman, biasanya menjauh','居心地悪く距離を置く',{empathy:-2,agree:-1}]
+]),
+Q('q10','2','Anda berkenalan dengan orang baru. Biasanya…','新しい人と出会ったとき…',[
+  ['Saya yang memulai bicara, banyak bertanya','自分から話しかけ質問する',{extra:2}],
+  ['Berinteraksi tapi tidak terlalu banyak','適度に話す',{extra:1}],
+  ['Menunggu sampai mereka bicara dulu','相手から話しかけるのを待つ',{}],
+  ['Saya tidak nyaman dengan orang baru','新しい人は苦手',{extra:-2}]
+]),
+Q('q11','2','Bagaimana perasaan Anda saat berbicara dengan orang lanjut usia (lansia)?','高齢者と話すことについてどう感じますか？',[
+  ['Suka, senang mendengar cerita mereka','好き。昔の話を聞くのが楽しい',{empathy:2,extra:1}],
+  ['Nyaman, seperti kakek-nenek sendiri','自分の祖父母のようで心地よい',{empathy:2,fam:1}],
+  ['Biasa saja','普通',{}],
+  ['Agak sulit, bicaranya lambat dan berulang','少し苦手。話が遅く同じ話が多い',{empathy:-2}]
+]),
+
+//----- セクション3: Respons Stres (ストレス対処) -----
+Q('q12','3','Anda gagal dalam ujian penting. Reaksi pertama?','大切な試験に落ちた時の最初の反応',[
+  ['Langsung berpikir bagaimana memperbaiki','すぐ改善策を考える',{resil:2,consc:1}],
+  ['Sedih sebentar, lalu coba lagi','少し落ち込んでから再挑戦',{resil:1}],
+  ['Marah pada diri sendiri atau orang lain','自分や他人に怒り',{emo:-2,resil:-1}],
+  ['Menyerah, cari jalan lain','諦めて別の道を探す',{resil:-2,long:-1}]
+]),
+Q('q13','3','Atasan memarahi Anda di depan rekan. Anda…','上司に同僚の前で叱られたとき',[
+  ['Terima saran dan berusaha perbaiki','受け止めて改善努力',{resil:2,agree:1,rule:1}],
+  ['Kecewa tapi tetap profesional','がっかりしつつもプロらしく振る舞う',{emo:2,resil:1}],
+  ['Malu dan tidak mood seharian','恥ずかしくて一日不機嫌',{emo:-1}],
+  ['Marah dan ingin pulang','怒って帰りたくなる',{emo:-2,resil:-2}]
+]),
+Q('q14','3','Saat sangat stres, biasanya Anda…','強いストレスを感じたとき',[
+  ['Olahraga / aktivitas fisik','運動',{resil:2}],
+  ['Bicara dengan keluarga / teman','家族・友人と話す',{fam:1,comm:1}],
+  ['Minum / merokok / makan banyak','飲酒・喫煙・暴食',{alc:1,smoke:1,resil:-1}],
+  ['Tidur banyak atau menyendiri','たくさん寝る・引きこもる',{}]
+]),
+Q('q15','3','Anda salah menyajikan makanan kepada lansia (tertukar dengan orang lain). Sikap Anda?','利用者への配膳を取り違えたとき',[
+  ['Lapor staf senior segera, jelaskan situasi','即報告して状況説明',{integ:2,comm:2,rule:1}],
+  ['Tukar kembali diam-diam kalau belum dimakan','食べる前ならこっそり戻す',{integ:-1}],
+  ['Tunggu sampai ditanya, baru jelaskan','聞かれてから説明',{integ:-1}],
+  ['Berusaha agar tidak ketahuan','バレないように',{integ:-2,rule:-2}]
+]),
+Q('q16','3','Saat Anda marah pada seseorang…','怒りを感じたとき',[
+  ['Tarik napas, tenangkan diri dulu','深呼吸して落ち着いてから話す',{emo:2,resil:1}],
+  ['Bilang dengan tenang bahwa saya kesal','穏やかに不満を伝える',{emo:1,comm:1}],
+  ['Pendam, tidak bicarakan','我慢して話さない',{avoid:2}],
+  ['Langsung tunjukkan kemarahan','すぐ怒りを示す',{emo:-2}]
+]),
+
+//----- セクション4: Keuangan & Perencanaan (金銭・計画性) -----
+Q('q17','4','Baru menerima gaji bulan ini. Hal pertama?','給料を受け取って最初に',[
+  ['Tabung dulu sebagian besar','大部分を貯金',{fin:2,consc:1,long:1}],
+  ['Bayar kewajiban dulu, sisanya hidup','固定費→残りで生活',{fin:1,consc:1}],
+  ['Beli sesuatu yang lama saya inginkan','前から欲しかったものを購入',{fin:-1}],
+  ['Makan-makan dengan teman untuk merayakan','友人と祝賀会',{fin:-2,extra:1}]
+]),
+Q('q18','4','Pada akhir bulan, biasanya…','月末は普段',[
+  ['Selalu ada tabungan tersisa','常に貯金が残る',{fin:2,long:1}],
+  ['Pas-pasan, tapi cukup','ぎりぎり足りる',{}],
+  ['Pinjam sedikit kalau perlu','たまに少し借りる',{fin:-1}],
+  ['Selalu kehabisan, pinjam dulu','いつも足りず借りる',{fin:-2}]
+]),
+Q('q19','4','Teman dekat minta pinjam uang yang cukup besar. Anda…','親しい友人に多額を借りたいと言われた時',[
+  ['Pinjamkan, dia teman saya','友達だから貸す',{agree:1,fin:-1}],
+  ['Pinjamkan jika yakin akan dikembalikan','返してくれる確信があれば貸す',{}],
+  ['Pinjamkan jumlah lebih kecil saja','少額だけ貸す',{fin:1}],
+  ['Tolak baik-baik, ini bisa rusak hubungan','関係を壊さないよう丁寧に断る',{fin:2,consc:1}]
+]),
+
+//----- セクション5: Hiburan & Gaya Hidup (余暇・生活様式) -----
+Q('q20','5','Akhir pekan biasanya Anda…','週末は普段',[
+  ['Di rumah, istirahat / nonton / baca','家で休息・視聴・読書',{}],
+  ['Olahraga atau aktivitas fisik','運動',{resil:1}],
+  ['Keluar dengan teman, makan, jalan-jalan','友人と外出',{extra:2}],
+  ['Berkumpul ramai / pesta','賑やかな集まり・パーティ',{extra:1,alc:1}]
+]),
+Q('q21','5','Tentang minuman beralkohol…','お酒について',[
+  ['Tidak minum sama sekali','全く飲まない',{rule:1}],
+  ['Sangat jarang, kadang ikut acara','とても稀、行事の時だけ',{}],
+  ['Beberapa kali sebulan','月に数回',{alc:1}],
+  ['Setiap minggu atau lebih sering','毎週かそれ以上',{alc:2,consc:-1}]
+]),
+Q('q22','5','Tentang merokok…','喫煙について',[
+  ['Tidak pernah merokok','吸わない',{}],
+  ['Pernah coba, sekarang tidak','試したが今は吸わない',{}],
+  ['Kadang merokok (saat stres / acara)','たまに吸う',{smoke:1}],
+  ['Setiap hari','毎日',{smoke:2}]
+]),
+Q('q23','5','Hobi yang Anda nikmati di waktu luang?','余暇に楽しむ趣味',[
+  ['Olahraga / fitness','運動・フィットネス',{resil:1,consc:1}],
+  ['Memasak / berkebun / kerajinan','料理・園芸・手芸',{consc:1,clean:1}],
+  ['Game / sosmed / streaming','ゲーム・SNS・動画',{digi:2}],
+  ['Berkumpul dengan teman','友人と集う',{extra:1}]
+]),
+
+//----- セクション6: Nilai & Pekerjaan (価値観・仕事) -----
+Q('q24','6','Apa yang paling penting bagi Anda di tempat kerja?','職場で最も大切なこと',[
+  ['Gaji dan tunjangan yang baik','給料と手当',{}],
+  ['Rekan kerja yang baik dan harmoni','良い同僚と調和',{agree:2}],
+  ['Bisa belajar dan berkembang','学び成長できる',{consc:1,long:1}],
+  ['Pekerjaan stabil jangka panjang','長期的に安定した仕事',{long:2,consc:1}]
+]),
+Q('q25','6','Atasan memberi instruksi yang menurut Anda tidak masuk akal. Anda…','上司の指示が不合理だと思ったとき',[
+  ['Tetap ikuti, dia pasti punya alasan','従う、理由があるはず',{agree:1,rule:2}],
+  ['Ikuti dulu, tanyakan baik-baik nanti','まず従い後で丁寧に質問',{comm:2,rule:1}],
+  ['Tanyakan langsung mengapa demikian','その場で理由を聞く',{comm:1}],
+  ['Tolak kalau menurut saya salah','おかしいと思えば拒否',{rule:-1}]
+]),
+Q('q26','6','Berapa lama Anda ingin bekerja di Jepang?','日本で何年働きたいか',[
+  ['5 tahun atau lebih, kalau bisa selamanya','5年以上、可能なら永住',{long:2}],
+  ['3–5 tahun, lalu pulang untuk usaha','3〜5年、その後帰国して起業',{long:1,consc:1}],
+  ['1–3 tahun, mengumpulkan modal','1〜3年、資金集め',{}],
+  ['Lihat situasi nanti','状況による',{long:-1}]
+]),
+Q('q27','6','Anda melihat rekan kerja memperlakukan lansia dengan kasar. Anda…','同僚が利用者に乱暴に接しているのを見たとき',[
+  ['Hentikan / tegur saat itu juga','その場で止める・注意する',{integ:2,comm:1,rule:1}],
+  ['Segera lapor ke atasan / staf senior','すぐ上司・先輩に報告',{rule:2,integ:1}],
+  ['Bicara berdua dengannya nanti, baik-baik','後で本人と二人で話す',{comm:1,integ:1,avoid:1}],
+  ['Tidak ikut campur, itu urusannya','関与しない',{integ:-2,rule:-2,empathy:-1}]
+]),
+
+//----- セクション7: Situasi Perawatan (介護シチュエーション) -----
+Q('q28','7','Lansia dengan demensia bertanya hal yang sama 10 kali. Anda…','認知症の利用者が同じ質問を10回。あなたは…',[
+  ['Jawab dengan sabar setiap kali, seperti pertama kali','毎回初めてのように穏やかに答える',{empathy:2,emo:2}],
+  ['Jawab, lalu coba alihkan ke topik yang dia suka','答えつつ好きな話題へ切り替える',{empathy:1,comm:1}],
+  ['Lama-lama nada bicara saya jadi kasar','だんだん口調がきつくなる',{impulse:2,emo:-2,empathy:-1}],
+  ['Pura-pura tidak dengar','聞こえないふりをする',{empathy:-2,integ:-1}]
+]),
+Q('q29','7','Lansia menolak mandi. Anda…','利用者が入浴を嫌がる。あなたは…',[
+  ['Tanya alasannya, tunggu perasaannya tenang','理由を聞き、気持ちが落ち着くのを待つ',{empathy:2,comm:2}],
+  ['Ajak bicara hal yang dia suka, lalu ajak pelan-pelan','好きな話をしてからゆっくり誘う',{empathy:2,comm:1}],
+  ['Konsultasi dengan staf senior / perawat Jepang','先輩・日本人職員に相談',{rule:1,comm:1}],
+  ['Paksa sedikit, karena itu sudah jadwalnya','予定なので少し強引に進める',{empathy:-2,rule:-1}]
+]),
+Q('q30','7','Perasaan jujur Anda tentang membantu lansia buang air (ganti popok dll)?','排泄介助（おむつ交換など）への正直な気持ちは？',[
+  ['Tidak masalah, itu bagian penting dari pekerjaan','問題ない。大切な仕事の一部',{careAcc:2,integ:1}],
+  ['Awalnya mungkin sulit, tapi pasti terbiasa','最初は大変でも必ず慣れる',{careAcc:1}],
+  ['Agak berat, tapi akan saya coba','少し抵抗があるが挑戦する',{}],
+  ['Sejujurnya saya tidak mau kalau bisa','正直できれば避けたい',{careAcc:-2}]
+]),
+Q('q31','7','Tentang kerja malam (night shift)…','夜勤について…',[
+  ['Tidak masalah, badan saya kuat','問題ない。体は丈夫',{resil:2,careAcc:1}],
+  ['Bisa, asal ada waktu istirahat yang cukup','休みが十分なら可能',{resil:1,consc:1}],
+  ['Agak khawatir, belum pernah coba','経験がなく少し不安',{}],
+  ['Kalau bisa saya hindari','できれば避けたい',{resil:-1,long:-1}]
+]),
+Q('q32','7','Anda menemukan lansia terjatuh di kamar. Hal pertama yang Anda lakukan?','居室で利用者が転倒しているのを発見。最初にすること？',[
+  ['Cek kondisinya, segera panggil staf lain & lapor','状態を確認し、すぐ応援を呼び報告',{rule:2,comm:2,emo:1}],
+  ['Bantu dia berdiri dulu, baru lapor','まず立たせてから報告',{agree:1,rule:-1}],
+  ['Panik, tidak tahu harus berbuat apa','慌ててどうしていいか分からない',{emo:-2}],
+  ['Kalau kelihatan baik-baik saja, tidak perlu lapor','大丈夫そうなら報告しない',{rule:-2,integ:-2}]
+]),
+Q('q33','7','Lansia tiba-tiba marah dan membentak Anda…','利用者に突然怒鳴られたとき…',[
+  ['Tetap tenang, mungkin dia sedang tidak nyaman','落ち着いて対応。体調や不安のサインかも',{emo:2,empathy:2}],
+  ['Minta maaf dulu, lalu tanya pelan-pelan','まず謝り、ゆっくり話を聞く',{agree:1,comm:1}],
+  ['Sedih dan terpikir terus seharian','落ち込んで一日引きずる',{resil:-1}],
+  ['Kesal dan membalas dengan nada tinggi','イラッとして言い返す',{emo:-2,impulse:2}]
+]),
+Q('q34','7','Pengalaman Anda merawat orang (kakek-nenek, keluarga sakit, dll)?','介護・看病の経験（祖父母・家族など）は？',[
+  ['Pernah merawat keluarga secara langsung','家族を直接介護・看病した経験あり',{careAcc:2,empathy:1,fam:1}],
+  ['Pernah membantu merawat','手伝い程度の経験あり',{careAcc:1,fam:1}],
+  ['Belum ada, tapi ingin belajar','経験はないが学びたい',{long:1}],
+  ['Belum ada, dan sedikit takut','経験がなく少し不安',{}]
+]),
+Q('q35','7','Suatu hari, lansia yang Anda rawat meninggal dunia. Anda…','担当していた利用者が亡くなったとき…',[
+  ['Sedih, tapi bersyukur bisa merawatnya sampai akhir','悲しいが、最期まで関われたことに感謝する',{empathy:2,resil:1,emo:1}],
+  ['Sedih lama, sulit kembali bekerja','長く落ち込み、仕事が手につかない',{resil:-2}],
+  ['Berusaha tidak terlalu dekat dengan lansia agar tidak sedih','悲しくならないよう深く関わらないようにする',{empathy:-1,avoid:1}],
+  ['Itu bagian dari pekerjaan, tidak terlalu terpikir','仕事の一部なので特に引きずらない',{emo:1,empathy:-1}]
+]),
+
+//----- セクション8: Keluarga (家族) -----
+Q('q36','8','Seberapa sering Anda akan komunikasi dengan keluarga selama di Jepang?','日本滞在中に家族と連絡する頻度',[
+  ['Setiap hari','毎日',{fam:2}],
+  ['2–3 kali seminggu','週2〜3回',{fam:1}],
+  ['Sekali seminggu','週1回',{}],
+  ['Hanya kalau ada hal penting','大事な時だけ',{fam:-1}]
+]),
+Q('q37','8','Dukungan keluarga atas Anda bekerja di Jepang?','日本での就労への家族の支援度',[
+  ['Keluarga sepenuhnya mendukung','全面支援',{fam:2,long:1}],
+  ['Mendukung tapi sedikit khawatir','支援しつつ少し心配',{fam:1}],
+  ['Ada anggota yang tidak setuju','反対者がいる',{fam:-1,long:-1}],
+  ['Banyak yang menentang','多くが反対',{fam:-2,long:-2}]
+]),
+Q('q38','8','Berapa persen gaji akan Anda kirim ke keluarga?','給料の何%を家族へ仕送り予定？',[
+  ['50% atau lebih','50%以上',{fam:2,fin:1,long:1}],
+  ['30–50%','30〜50%',{fam:1,fin:1}],
+  ['10–30%','10〜30%',{}],
+  ['Kurang dari 10% atau tidak','10%未満 / なし',{fam:-1}]
+]),
+
+//----- セクション9: Jawaban Cepat / Insting (即答・本能 — 強制選択) -----
+// 仕事と関係ない深層動機を露わにする質問。考えず直感で答える形式
+Q('q39','9','Yang paling Anda BENCI?','一番嫌なのは？',[
+  ['Menjadi miskin','貧乏になること',{money_d:3,fin:-1}],
+  ['Diremehkan / dipandang rendah','バカにされること',{prestige_d:3,emo:-1,revenge:1}],
+  ['Kehilangan kebebasan','自由がないこと',{freedom_d:3,rule:-1,agree:-1}],
+  ['Sendirian','一人になること',{relation_d:3,extra:1,fam:1}]
+]),
+Q('q40','9','Jika hanya SATU yang bisa Anda dapatkan?','もし一つだけ手に入るなら？',[
+  ['Uang banyak','お金',{money_d:3}],
+  ['Popularitas / terkenal','人気',{prestige_d:3,extra:1}],
+  ['Kebebasan','自由',{freedom_d:3}],
+  ['Rasa aman','安心',{consc:1,long:1,emo:1}]
+]),
+Q('q41','9','Yang paling tidak bisa Anda MAAFKAN?','一番許せないのは？',[
+  ['Dibohongi','嘘をつかれること',{integ:2,rule:1}],
+  ['Diperintah','命令されること',{rule:-2,agree:-1,freedom_d:1}],
+  ['Diabaikan','無視されること',{relation_d:2,prestige_d:1}],
+  ['Kalah / dikalahkan','負けること',{revenge:2,prestige_d:1,resil:-1}]
+]),
+Q('q42','9','Yang paling TIDAK Anda kuasai?','一番苦手なのは？',[
+  ['Menunggu','待つこと',{impulse:2,emo:-1}],
+  ['Bersabar / menahan diri','我慢すること',{impulse:2,resil:-2,emo:-1}],
+  ['Minta maaf','謝ること',{integ:-1,prestige_d:2,agree:-1}],
+  ['Mengikuti pendapat orang','人に合わせること',{agree:-2,freedom_d:1}]
+]),
+Q('q43','9','Kapan hati Anda paling LEMAH?','一番心が弱くなるのは？',[
+  ['Saat kesepian','寂しい時',{relation_d:2,extra:-1}],
+  ['Saat lelah','疲れている時',{resil:-1}],
+  ['Saat tidak ada uang','お金がない時',{money_d:2,fin:-1}],
+  ['Saat diremehkan','バカにされた時',{prestige_d:2,emo:-1,revenge:1}]
+]),
+Q('q44','9','Yang paling MEMALUKAN bagi Anda?','一番恥ずかしいのは？',[
+  ['Gagal di depan orang banyak','人前で失敗すること',{prestige_d:2,resil:-1}],
+  ['Terlihat tidak punya uang','お金がないと思われること',{money_d:2,prestige_d:1}],
+  ['Dianggap bodoh','バカだと思われること',{prestige_d:2}],
+  ['Dianggap tidak punya teman','友達がいないと思われること',{relation_d:2,extra:1}]
+]),
+Q('q45','9','Yang paling membuat Anda JENGKEL?','一番イライラするのは？',[
+  ['Orang yang lambat','遅い人',{impulse:2,emo:-1}],
+  ['Orang yang sombong','偉そうな人',{prestige_d:1,revenge:1}],
+  ['Orang yang melanggar aturan','ルールを守らない人',{rule:2,integ:1}],
+  ['Orang yang merendahkan saya','自分を見下す人',{prestige_d:2,revenge:2,emo:-1}]
+]),
+Q('q46','9','Yang paling tidak ingin Anda JADI?','一番なりたくないのは？',[
+  ['Orang lemah','弱い人',{prestige_d:1}],
+  ['Orang biasa, tidak menonjol','目立たない人',{prestige_d:2,extra:1}],
+  ['Orang miskin','貧しい人',{money_d:2,fin:1}],
+  ['Orang yang dibenci semua orang','みんなに嫌われる人',{relation_d:2,agree:1}]
+]),
+Q('q47','9','Pemikiran yang paling DEKAT dengan Anda?','一番近い考えは？',[
+  ['Yang tidak kuat akan kalah','人は強くないと負ける',{revenge:1,prestige_d:1}],
+  ['Yang tidak disukai akan kesepian','人は好かれないと寂しい',{relation_d:2,agree:1}],
+  ['Yang tidak punya uang akan lemah','人はお金がないと弱い',{money_d:2}],
+  ['Yang tidak bebas akan menderita','人は自由がないと苦しい',{freedom_d:2,rule:-1}]
+]),
+Q('q48','9','Jika satu hari saja Anda bisa MELAKUKAN APA SAJA?','もし一日だけ何でもできるなら？',[
+  ['Mendapatkan uang besar','大きなお金を手に入れる',{money_d:2}],
+  ['Menjadi terkenal','有名になる',{prestige_d:2,extra:1}],
+  ['Pergi ke tempat yang saya suka','好きな場所へ行く',{freedom_d:2}],
+  ['Membalas orang yang tidak suka saya','嫌いな人を見返す',{revenge:3,integ:-1,prestige_d:1}]
+])
+];
+
+//==========================================================
+// データ層
+//==========================================================
+let state=loadState();
+function loadState(){try{const r=localStorage.getItem(STORAGE_KEY);if(r)return JSON.parse(r);}catch(e){}return{submissions:[],members:seedMembers()};}
+function saveState(){
+  // 全エンティティに updatedAt/updatedBy をタグ付け（簡易版）
+  const now=new Date().toISOString();const u=settings.userName||'unknown';
+  state.submissions.forEach(s=>{if(!s.updatedAt){s.updatedAt=now;s.updatedBy=u;}});
+  state.members.forEach(m=>{if(!m.updatedAt){m.updatedAt=now;m.updatedBy=u;}});
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+  if(MODE==='admin'&&getBackendUrl())schedulePush();
+}
+// 編集時に呼ぶ - 強制的にupdatedAtを更新
+function touchEntity(entity){if(entity){entity.updatedAt=new Date().toISOString();entity.updatedBy=settings.userName||'unknown';}}
+function uuid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+
+// 既存メンバー初期データ（議事録ベース）
+function seedMembers(){return[
+  {id:'m1',name:'サンプル先輩A',company:'特養さくら園',isBenchmark:true,
+    traits:{consc:9,agree:9,emo:8,clean:9,extra:6,rule:9,integ:10,comm:8,resil:8,empathy:9,careAcc:9,fin:8,long:10,fam:8},
+    risks:{alc:1,smoke:1,digi:3,avoid:2,impulse:1,revenge:1},
+    drives:{money:15,prestige:15,freedom:15,relation:55},
+    notes:'ベンチマーク用サンプルデータ。実在の既存メンバーに置き換えてください。'},
+  {id:'m2',name:'サンプル先輩B',company:'グループホームひまわり',
+    traits:{consc:6,agree:7,emo:5,clean:6,extra:8,rule:6,integ:7,comm:8,resil:5,empathy:7,careAcc:6,fin:5,long:7,fam:7},
+    risks:{alc:4,smoke:3,digi:5,avoid:3,impulse:4,revenge:2},
+    drives:{money:30,prestige:25,freedom:15,relation:30},
+    notes:'サンプルデータ。「編集」から書き換えるか削除して使用してください。'}
+];}
+
+//==========================================================
+// スコア計算
+//==========================================================
+function calcScores(answers){
+  const t={};const r={};const d={};
+  Object.keys(TRAITS).forEach(k=>t[k]=0);
+  Object.keys(RISKS).forEach(k=>r[k]=0);
+  Object.keys(DRIVES).forEach(k=>d[k+'_d']=0);// money_d, prestige_d, freedom_d, relation_d
+  QUESTIONS.forEach(q=>{
+    if(q.type==='text')return;
+    const sel=answers[q.id];if(sel==null)return;
+    const opt=q.options[sel];if(!opt)return;
+    Object.entries(opt.s||{}).forEach(([k,v])=>{
+      if(k in t)t[k]+=v;
+      if(k in r)r[k]+=v;
+      if(k in d)d[k]+=v;
+    });
+  });
+  // 0-10に正規化（各特性の最大ポイントから）
+  const norm={};
+  Object.keys(TRAITS).forEach(k=>{
+    const max=Math.max(2,maxPossible(k));
+    norm[k]=Math.max(0,Math.min(10,(t[k]/max)*5+5));
+  });
+  const normR={};
+  Object.keys(RISKS).forEach(k=>{
+    const max=Math.max(2,maxPossible(k));
+    normR[k]=Math.max(0,Math.min(10,(r[k]/max)*5+5));
+  });
+  // ドライブは合計を100%で正規化
+  const driveTotal=Object.values(d).reduce((a,b)=>a+Math.max(0,b),0);
+  const normD={};
+  Object.keys(DRIVES).forEach(k=>{
+    const v=Math.max(0,d[k+'_d']);
+    normD[k]=driveTotal>0?(v/driveTotal)*100:25;
+  });
+  return{traits:norm,risks:normR,drives:normD,raw:t,rawRisks:r,rawDrives:d};
+}
+function maxPossible(key){
+  let s=0;
+  QUESTIONS.forEach(q=>{
+    if(q.type==='text')return;
+    let m=0;
+    q.options.forEach(o=>{m=Math.max(m,Math.abs((o.s||{})[key]||0));});
+    s+=m;
+  });
+  return s;
+}
+
+// リスクフラグ判定
+function countSignals(answers,key,positive){
+  if(!answers)return 99;
+  let c=0;
+  QUESTIONS.forEach(q=>{
+    if(q.type==='text')return;
+    const sel=answers[q.id];if(sel==null)return;
+    const opt=q.options[sel];if(!opt)return;
+    const v=(opt.s||{})[key]||0;
+    if(positive&&v>0)c++;else if(!positive&&v<0)c++;
+  });
+  return c;
+}
+function detectFlags(scores,answers){
+  const f=[];const t=scores.traits;const r=scores.risks;const d=scores.drives||{};
+  if(t.emo<3)f.push({level:'red',label:'情緒不安定（短気リスク）'});
+  if(t.rule<3)f.push({level:'red',label:'規範意識が低い'});
+  if(t.integ<3)f.push({level:'red',label:'誠実さに懸念'});
+  if(t.empathy<3)f.push({level:'red',label:'共感性が低い'});
+  else if(t.empathy<4.5&&countSignals(answers,'empathy',false)>=2)f.push({level:'yellow',label:'共感性に懸念'});
+  if(t.careAcc<3)f.push({level:'red',label:'身体介助への抵抗感が強い'});
+  else if(t.careAcc<4.5&&countSignals(answers,'careAcc',false)>=2)f.push({level:'yellow',label:'介助受容性に懸念'});
+  if(t.long<4&&countSignals(answers,'long',false)>=2)f.push({level:'yellow',label:'長期就労意欲が弱い'});
+  if(t.clean<4&&countSignals(answers,'clean',false)>=2)f.push({level:'yellow',label:'清潔感に要指導'});
+  if(t.resil<4&&countSignals(answers,'resil',false)>=2)f.push({level:'yellow',label:'ストレス耐性が低い'});
+  if(t.fin<4&&countSignals(answers,'fin',false)>=2)f.push({level:'yellow',label:'金銭管理に懸念'});
+  if(t.fam<4&&countSignals(answers,'fam',false)>=2)f.push({level:'yellow',label:'家族支援が弱い'});
+  if(r.alc>7&&countSignals(answers,'alc',true)>=2)f.push({level:'red',label:'飲酒頻度が高い'});
+  if(r.smoke>7)f.push({level:'yellow',label:'喫煙習慣あり'});
+  if(r.digi>7&&countSignals(answers,'digi',true)>=2)f.push({level:'yellow',label:'スマホ依存傾向'});
+  if(r.avoid>7&&countSignals(answers,'avoid',true)>=2)f.push({level:'yellow',label:'対立回避が強い'});
+  if(r.impulse>7&&countSignals(answers,'impulse',true)>=2)f.push({level:'red',label:'衝動性高'});
+  if(r.revenge>7&&countSignals(answers,'revenge',true)>=2)f.push({level:'red',label:'見返し・復讐心が強い'});
+  if(d.money>50)f.push({level:'yellow',label:'金銭ドライブ過剰'});
+  if(d.prestige>50)f.push({level:'yellow',label:'承認・プライド過剰'});
+  if(d.freedom>50)f.push({level:'yellow',label:'自由志向過剰'});
+  return f;
+}
+
+// 動機ドライブから候補者タイプを判定
+function getDriveType(drives){
+  const max=Object.entries(drives).sort((a,b)=>b[1]-a[1])[0];
+  const types={
+    money:{ja:'💰 金銭ドライブ型',desc:'稼ぐことが第一動機。給料・手当に敏感。'},
+    prestige:{ja:'⭐ 承認ドライブ型',desc:'認められることを重視。プライドが高く褒めると伸びる。'},
+    freedom:{ja:'🕊 自由ドライブ型',desc:'拘束を嫌う。裁量を与えると力を発揮。'},
+    relation:{ja:'🤝 関係ドライブ型',desc:'人とのつながりが第一。チーム配属で活きる。'}
+  };
+  return{type:max[0],pct:max[1].toFixed(0),...types[max[0]]};
+}
+
+// 既存メンバーとの相性計算
+function calcCompatibility(candScores,memb){
+  let sim=0,total=0;
+  Object.keys(TRAITS).forEach(k=>{
+    const a=candScores.traits[k];const b=memb.traits[k];
+    sim+=10-Math.abs(a-b);total+=10;
+  });
+  let score=(sim/total)*10;
+  const risks=[],positives=[];
+  const cT=candScores.traits,mT=memb.traits;
+  const cR=candScores.risks,mR=memb.risks||{};
+  const cD=candScores.drives||{},mD=memb.drives||{};
+  // 性格リスク補正
+  if(cT.emo<5&&mT.emo<5){score-=1.5;risks.push('両者とも情緒不安定→寮内衝突リスク');}
+  if(cR.alc>6&&(mR.alc||0)>6){score-=1;risks.push('両者とも飲酒頻度高→飲み過ぎリスク');}
+  if(cT.clean<5&&mT.clean<5){score-=1;risks.push('両者とも清潔感低→寮の衛生問題');}
+  if(cT.rule<5&&mT.rule<5){score-=1;risks.push('両者ともルール意識低→規律問題');}
+  // 衝動性・見返し心
+  if(cR.impulse>6&&(mR.impulse||0)>6){score-=1.5;risks.push('両者とも衝動性高→些細な事で衝突');}
+  if(cR.revenge>6&&(mR.revenge||0)>6){score-=1.5;risks.push('両者とも見返し心強→不仲長期化リスク');}
+  // 動機ドライブの組み合わせ
+  if((cD.prestige||0)>40&&(mD.prestige||0)>40){score-=1;risks.push('両者とも承認欲求強→マウント取り合いリスク');}
+  if((cD.money||0)>45&&(mD.money||0)>45){score-=0.5;risks.push('両者とも金銭ドライブ過剰→ボーナス・待遇で揉める可能性');}
+  if((cD.freedom||0)>45&&mT.rule>=7){score-=0.5;risks.push('候補者が自由志向、メンバーがルール重視→価値観衝突');}
+  // 補完・ポジティブ
+  if(memb.isBenchmark&&cT.consc>=6){positives.push('ベンチマーク先輩の指導を素直に受けやすい');}
+  if(mT.comm>=7&&cT.comm<5){positives.push('コミュ強メンバーが候補者の弱みを補完');}
+  if(mT.long>=8&&cT.long>=7){positives.push('双方が長期就労意欲で安定したチーム');}
+  if((cD.relation||0)>35&&(mD.relation||0)>35){positives.push('双方が関係ドライブ型→絆を作りやすい');}
+  if((cD.prestige||0)>35&&mT.comm>=7){positives.push('プライド型候補に対し、コミュ強メンバーが褒めて伸ばせる');}
+  if((cD.money||0)>35&&(mD.money||0)>35&&cT.long>=6&&mT.long>=6){positives.push('双方が金銭志向＋長期意欲→稼ぐパートナーシップ');}
+
+  score=Math.max(1,Math.min(10,score));
+  let advice;
+  if(score>=8)advice='同寮・近接配置を強く推奨';
+  else if(score>=6)advice='問題なし、近接配置可';
+  else if(score>=4)advice='近接配置可、ただし初期1ヶ月は密に観察';
+  else advice='別寮を強く推奨';
+  return{score,sim:sim/total,risks,positives,advice};
+}
+
+//==========================================================
+// ルーティング
+//==========================================================
+let currentView='list';
+let currentId=null;
+
+function render(){
+  if(MODE==='quiz'){renderQuiz();return;}
+  if(!isLoggedIn()){renderLogin();return;}
+  renderAdmin();
+}
+
+//==========================================================
+// ログイン画面
+//==========================================================
+function renderLogin(){
+  const app=document.getElementById('app');
+  const hasPin=!!CONFIG.sharedPin;
+  app.innerHTML=`
+  <div style="min-height:100vh;display:flex;flex-direction:column;background:#F5F5F7;">
+    <div class="gradient-pink" style="padding:60px 20px 80px;color:#fff;text-align:center;">
+      <div style="font-size:48px;margin-bottom:8px;">🌸</div>
+      <h1 style="font-size:24px;font-weight:800;margin:0 0 4px;">${esc(CONFIG.appName)}</h1>
+      <p style="font-size:13px;opacity:.95;margin:0;">${esc(CONFIG.appSubtitle)}</p>
+    </div>
+    <div style="max-width:420px;width:100%;margin:-60px auto 0;padding:0 16px;flex:1;">
+      <div class="card">
+        <h2 style="font-size:18px;font-weight:700;margin:0 0 6px;">ログイン</h2>
+        ${sb?`
+        <p style="font-size:12px;color:#6B7280;margin:0 0 18px;">管理者アカウントでログインしてください。</p>
+        <div style="margin-bottom:14px;">
+          <label class="label">📧 メールアドレス</label>
+          <input class="input" id="login-email" type="email" autocomplete="username" placeholder="you@ystalent.jp">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label class="label">🔒 パスワード</label>
+          <input class="input" id="login-pw" type="password" autocomplete="current-password" placeholder="パスワード" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label class="label">👤 表示名（編集履歴に表示されます）</label>
+          <select class="select input" id="login-select" onchange="onLoginSelect()" style="width:100%;">
+            <option value="">— 選択してください —</option>
+            ${CONFIG.teamMembers.map(n=>`<option value="${esc(n)}" ${settings.userName===n?'selected':''}>${esc(n)}</option>`).join('')}
+            <option value="__other__">＋ その他（手動入力）</option>
+          </select>
+        </div>
+        <div id="login-custom-wrap" style="display:none;margin-bottom:14px;">
+          <label class="label">表示名（手動入力）</label>
+          <input class="input" id="login-custom" placeholder="例: 山田 太郎">
+        </div>
+        `:`
+        <p style="font-size:12px;color:#6B7280;margin:0 0 18px;">あなたのお名前を選択してください。<br>編集履歴に表示されます。</p>
+        <div style="margin-bottom:14px;">
+          <label class="label">👤 名前を選択</label>
+          <select class="select input" id="login-select" onchange="onLoginSelect()" style="width:100%;">
+            <option value="">— 選択してください —</option>
+            ${CONFIG.teamMembers.map(n=>`<option value="${esc(n)}" ${settings.userName===n?'selected':''}>${esc(n)}</option>`).join('')}
+            <option value="__other__">＋ その他（手動入力）</option>
+          </select>
+        </div>
+        <div id="login-custom-wrap" style="display:none;margin-bottom:14px;">
+          <label class="label">お名前（手動入力）</label>
+          <input class="input" id="login-custom" placeholder="例: 山田 太郎">
+        </div>
+        `}
+        <button class="btn-primary btn-block" id="login-btn" onclick="doLogin()">ログイン →</button>
+        ${sb?`<p style="font-size:11px;color:#10B981;margin:12px 0 0;text-align:center;">🔐 Supabase認証（チーム共有モード）</p>`:`<p style="font-size:11px;color:#F59E0B;margin:12px 0 0;text-align:center;">⚠ バックエンド未設定（ローカル保存のみ）</p>`}
+      </div>
+      <div style="text-align:center;margin-top:20px;font-size:11px;color:#9CA3AF;">${esc(CONFIG.appName)} v1.0（介護版）<br>© YS Talent</div>
+    </div>
+  </div>`;
+}
+
+function onLoginSelect(){
+  const sel=document.getElementById('login-select').value;
+  const w=document.getElementById('login-custom-wrap');
+  if(w)w.style.display=(sel==='__other__')?'block':'none';
+}
+
+async function doLogin(){
+  const sel=document.getElementById('login-select').value;
+  let name='';
+  if(sel==='__other__')name=document.getElementById('login-custom').value.trim();
+  else if(sel)name=sel;
+  if(!name){alert('表示名を選択または入力してください');return;}
+  if(sb){
+    const email=document.getElementById('login-email').value.trim();
+    const pw=document.getElementById('login-pw').value;
+    if(!email||!pw){alert('メールアドレスとパスワードを入力してください');return;}
+    const btn=document.getElementById('login-btn');
+    if(btn){btn.disabled=true;btn.textContent='⏳ 認証中...';}
+    const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
+    if(error){
+      if(btn){btn.disabled=false;btn.textContent='ログイン →';}
+      alert('ログインに失敗しました。メールアドレスとパスワードをご確認ください。\n('+error.message+')');
+      return;
+    }
+    sbSession=data.session;
+  }
+  settings.userName=name;
+  settings.loginAt=new Date().toISOString();
+  saveSettings();
+  render();
+  if(sb)syncPull().then(()=>render());
+}
+
+async function doLogout(){
+  if(!confirm('ログアウトしますか？'))return;
+  if(sb){try{await sb.auth.signOut();}catch(e){}sbSession=null;}
+  delete settings.userName;
+  delete settings.loginAt;
+  saveSettings();
+  render();
+}
+
+//==========================================================
+// 候補者モード（スマホ用・インドネシア語）
+//==========================================================
+const quiz={step:'welcome',idx:0,answers:{},timing:{},name:'',email:''};
+
+function renderQuiz(){
+  const app=document.getElementById('app');
+  if(quiz.step==='welcome')return renderWelcome(app);
+  if(quiz.step==='quiz')return renderQuestion(app);
+  if(quiz.step==='done')return renderDone(app);
+}
+
+function renderWelcome(app){
+  app.innerHTML=`
+  <div style="min-height:100vh;display:flex;flex-direction:column;">
+    <div class="gradient-pink" style="padding:32px 16px 80px;color:#fff;text-align:center;">
+      <div style="font-size:32px;font-weight:800;margin-bottom:8px;">YS Talent</div>
+      <div style="font-size:18px;font-weight:600;opacity:.95;">Profil Diri Kandidat Kaigo</div>
+      <div style="font-size:13px;opacity:.9;margin-top:8px;">介護候補者プロファイル自己診断</div>
+    </div>
+    <div class="quiz-container" style="margin-top:-60px;flex:1;">
+      <div class="card">
+        <h2 style="font-size:18px;font-weight:700;margin:0 0 12px;">Selamat datang! 👋</h2>
+        <p style="font-size:14px;color:#4B5563;line-height:1.6;margin:0 0 16px;">
+          Terima kasih atas minat Anda untuk bekerja di bidang perawatan lansia (kaigo) di Jepang.<br>
+          Sebelum wawancara, mohon isi profil singkat ini agar kami bisa mengenal Anda lebih baik.
+        </p>
+        <div style="background:#E6F4F1;border-radius:10px;padding:12px;font-size:13px;color:#1E7168;margin-bottom:20px;">
+          <strong>📋 Informasi:</strong><br>
+          • Sekitar <strong>48 pertanyaan</strong> (12-15 menit)<br>
+          • Tidak ada jawaban benar/salah<br>
+          • Jawab <strong>sejujurnya</strong>, ini untuk kebaikan Anda<br>
+          • Data hanya dilihat YS Talent & perusahaan penerima
+        </div>
+        <div style="margin-bottom:14px;">
+          <label class="label">Nama lengkap (sesuai paspor)<br><span style="font-weight:400;color:#9CA3AF;font-size:11px;">氏名（パスポート表記）</span></label>
+          <input class="input" id="q-name" placeholder="Contoh: Agrafin Afif Krisnoputra" value="${quiz.name}">
+        </div>
+        <div style="margin-bottom:24px;">
+          <label class="label">Email / WhatsApp (untuk YS Talent menghubungi)<br><span style="font-weight:400;color:#9CA3AF;font-size:11px;">連絡先</span></label>
+          <input class="input" id="q-email" placeholder="contoh@gmail.com / +62 8xx" value="${quiz.email}">
+        </div>
+        <button class="btn-primary btn-block" onclick="startQuiz()">Mulai → 開始</button>
+      </div>
+    </div>
+    <div style="text-align:center;padding:20px 16px;font-size:11px;color:#9CA3AF;">© YS Talent Indonesia Kaigo Program</div>
+  </div>`;
+}
+
+function startQuiz(){
+  const name=document.getElementById('q-name').value.trim();
+  const email=document.getElementById('q-email').value.trim();
+  if(!name){alert('Nama wajib diisi / 氏名は必須です');return;}
+  quiz.name=name;quiz.email=email;quiz.step='quiz';quiz.idx=0;render();
+}
+
+function renderQuestion(app){
+  const q=QUESTIONS[quiz.idx];
+  const sec=SECTIONS[q.sec];
+  const progress=(quiz.idx+1)/QUESTIONS.length*100;
+  const timeLimit=q.sec==='9'?8:15;
+  app.innerHTML=`
+  <div style="min-height:100vh;background:#F5F5F7;">
+    <div style="background:#fff;border-bottom:1px solid #E5E7EB;padding:12px 16px;position:sticky;top:0;z-index:10;">
+      <div class="quiz-container" style="padding:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:11px;color:#6B7280;font-weight:600;">${sec.icon} ${sec.id} / ${sec.ja}</span>
+          <span style="font-size:11px;color:#6B7280;">${quiz.idx+1} / ${QUESTIONS.length}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${progress}%;"></div></div>
+        <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:4px;">
+          <span style="font-size:11px;color:#9CA3AF;margin-right:4px;">⏱</span>
+          <span id="quiz-timer" style="font-size:13px;font-weight:700;color:#059669;min-width:20px;text-align:right;transition:all .2s;">${timeLimit}</span>
+          <span style="font-size:10px;color:#9CA3AF;margin-left:2px;">秒</span>
+        </div>
+      </div>
+    </div>
+    <div class="quiz-container" style="padding-top:20px;padding-bottom:20px;">
+      <div class="fade-in">
+        ${q.sec==='9'&&quiz.idx===QUESTIONS.findIndex(x=>x.sec==='9')?`
+        <div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);border:1px solid #F59E0B;border-radius:12px;padding:14px;margin-bottom:18px;">
+          <p style="margin:0;font-size:13px;color:#78350F;font-weight:600;">⚡ Pertanyaan Cepat — Jawab dengan INSTING / 即答セクション</p>
+          <p style="margin:6px 0 0;font-size:12px;color:#92400E;line-height:1.5;">Jangan dipikir terlalu lama. Pilih jawaban pertama yang muncul di kepala.<br>長く考えず、最初に頭に浮かんだ答えを選んでください。</p>
+        </div>`:''}
+        <h2 style="font-size:18px;font-weight:700;line-height:1.4;margin:0 0 8px;">${q.text.id}</h2>
+        <p style="font-size:13px;color:#9CA3AF;margin:0 0 20px;">${q.text.ja}</p>
+        ${q.type==='text'?renderTextInput(q):renderOptionsInput(q)}
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button class="btn-secondary" style="flex:1;" onclick="prevQ()" ${quiz.idx===0?'disabled':''}>← Sebelumnya</button>
+        <button class="btn-primary" style="flex:2;" onclick="nextQ()" id="nextBtn">Berikutnya →</button>
+      </div>
+    </div>
+  </div>`;
+  updateNextBtn();
+  try{startTimer(timeLimit);}catch(e){console.error('timer:',e);}
+}
+
+function renderOptionsInput(q){
+  const cur=quiz.answers[q.id];
+  return q.options.map((o,i)=>`
+    <button class="option-btn ${cur===i?'selected':''}" onclick="selectOpt('${q.id}',${i})">
+      <div>${o.id}</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">${o.ja}</div>
+    </button>
+  `).join('');
+}
+
+function renderTextInput(q){
+  const cur=quiz.answers[q.id]||'';
+  return `
+    <textarea class="textarea" rows="6" id="text-${q.id}" placeholder="${q.placeholder.id}\n（${q.placeholder.ja}）" oninput="updateText('${q.id}',this.value)">${cur}</textarea>
+    <p style="font-size:11px;color:#9CA3AF;margin-top:6px;">Jawaban bebas, minimal 1 kalimat / 自由記述（最低1文）</p>
+  `;
+}
+
+function startTimer(seconds){
+  if(quiz.timerInterval)clearInterval(quiz.timerInterval);
+  quiz.timerStart=Date.now();
+  quiz.timerSec=seconds;
+  quiz.timerInterval=setInterval(()=>{
+    const el=document.getElementById('quiz-timer');
+    if(!el){clearInterval(quiz.timerInterval);return;}
+    const elapsed=(Date.now()-quiz.timerStart)/1000;
+    const r=Math.max(0,quiz.timerSec-elapsed);
+    el.textContent=Math.ceil(r);
+    if(r<=0){el.style.color='#DC2626';el.style.transform='scale(1.3)';}
+    else if(r<3){el.style.color='#DC2626';el.style.transform='scale(1.1)';}
+    else if(r<5){el.style.color='#F59E0B';el.style.transform='scale(1)';}
+    else{el.style.color='#059669';el.style.transform='scale(1)';}
+  },200);
+}
+function selectOpt(id,i){
+  // 経過時間を記録
+  if(quiz.timerStart){
+    const elapsed=(Date.now()-quiz.timerStart)/1000;
+    quiz.timing[id]=Math.round(elapsed*10)/10;
+  }
+  quiz.answers[id]=i;render();
+}
+function updateText(id,v){
+  if(quiz.timerStart&&!quiz.timing[id]){
+    const elapsed=(Date.now()-quiz.timerStart)/1000;
+    quiz.timing[id]=Math.round(elapsed*10)/10;
+  }
+  quiz.answers[id]=v;updateNextBtn();
+}
+function updateNextBtn(){
+  const q=QUESTIONS[quiz.idx];
+  const a=quiz.answers[q.id];
+  const ok=q.type==='text'?(a&&a.trim().length>0):a!=null;
+  const btn=document.getElementById('nextBtn');
+  if(btn)btn.disabled=!ok;
+  if(btn)btn.textContent=quiz.idx===QUESTIONS.length-1?'Kirim ✓':'Berikutnya →';
+}
+
+function prevQ(){if(quiz.idx>0){quiz.idx--;render();}}
+function nextQ(){
+  const q=QUESTIONS[quiz.idx];
+  const a=quiz.answers[q.id];
+  if(q.type==='text'?(!a||!a.trim()):a==null){alert('Mohon pilih / isi jawaban dulu');return;}
+  if(quiz.idx<QUESTIONS.length-1){quiz.idx++;render();}
+  else submitQuiz();
+}
+
+async function submitQuiz(){
+  if(quiz.submitting)return;
+  quiz.submitting=true;
+  const _btn=document.getElementById('nextBtn');
+  if(_btn){_btn.disabled=true;_btn.textContent='Mengirim... / 送信中...';}
+  const submission={
+    id:uuid(),
+    submittedAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString(),
+    updatedBy:'candidate:'+quiz.name,
+    name:quiz.name,
+    email:quiz.email,
+    answers:quiz.answers,
+    timing:quiz.timing||{}
+  };
+  // ローカル保存
+  state.submissions.push(submission);
+  saveState();
+  // Supabaseへ直接送信(匿名INSERT: RLSで書き込みのみ許可)
+  let directSent=false;
+  if(sb){
+    try{
+      const {error}=await sb.from('submissions').insert({id:submission.id,updated_at:submission.submittedAt,name:submission.name||'',data:submission});
+      if(!error||error.code==='23505')directSent=true; // 23505=送信済み(重複)も成功扱い
+      else console.error('Direct submit failed:',error.message);
+    }catch(e){console.error('Direct submit failed:',e);}
+  }
+  quiz.step='done';
+  quiz.directSent=directSent;
+  render();
+}
+
+function renderDone(app){
+  const sent=quiz.directSent;
+  app.innerHTML=`
+  <div style="min-height:100vh;background:#F5F5F7;">
+    <div class="gradient-pink" style="padding:60px 16px 40px;color:#fff;text-align:center;">
+      <div style="font-size:64px;margin-bottom:10px;">${sent?'🎉':'📶'}</div>
+      <h1 style="font-size:24px;font-weight:800;margin:0 0 8px;">Terima kasih!</h1>
+      <p style="font-size:14px;opacity:.95;margin:0;">${sent?'Data Anda sudah terkirim ke YS Talent / 送信完了':'Koneksi bermasalah / 通信エラー'}</p>
+    </div>
+    <div class="quiz-container" style="padding-top:20px;">
+      ${sent?`
+      <div class="card" style="background:#D1FAE5;border-color:#10B981;">
+        <h3 style="font-weight:700;margin:0 0 6px;font-size:16px;color:#065F46;">✓ Tim YS Talent sudah menerima profil Anda</h3>
+        <p style="font-size:12px;color:#065F46;margin:0;line-height:1.6;">YSタレント担当者がプロファイルを受領しました。次の面接案内をお待ちください。</p>
+      </div>
+      `:`
+      <div class="card" style="background:#FEF3C7;border-color:#F59E0B;">
+        <h3 style="font-weight:700;margin:0 0 6px;font-size:16px;color:#92400E;">📡 Data belum terkirim / 未送信</h3>
+        <p style="font-size:12px;color:#92400E;margin:0 0 12px;line-height:1.6;">
+          Jawaban Anda sudah tersimpan di HP ini. Periksa koneksi internet, lalu tekan tombol di bawah.<br>
+          <span style="opacity:.8;">回答はこの端末に保存されています。通信環境を確認して、下のボタンで再送信してください。</span>
+        </p>
+        <button class="btn-primary btn-block" id="retry-send-btn" onclick="retrySend()">🔄 Kirim ulang / 再送信</button>
+      </div>
+      `}
+      <div style="text-align:center;margin-top:20px;">
+        <button class="btn-secondary" onclick="resetQuiz()">Mulai Ulang / もう一度</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function retrySend(){
+  const btn=document.getElementById('retry-send-btn');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Mengirim... / 送信中...';}
+  const submission=state.submissions[state.submissions.length-1];
+  let ok=false;
+  if(sb&&submission){
+    try{
+      const {error}=await sb.from('submissions').insert({id:submission.id,updated_at:submission.submittedAt,name:submission.name||'',data:submission});
+      if(!error||error.code==='23505')ok=true;
+      else console.error('Retry failed:',error.message);
+    }catch(e){console.error('Retry failed:',e);}
+  }
+  if(ok){quiz.directSent=true;render();}
+  else if(btn){btn.disabled=false;btn.textContent='🔄 Kirim ulang / 再送信';alert('Masih gagal. Periksa koneksi internet Anda. / まだ送信できません。通信環境をご確認ください。');}
+}
+
+function resetQuiz(){quiz.step='welcome';quiz.idx=0;quiz.answers={};quiz.name='';quiz.email='';render();}
+
+//==========================================================
+// 管理ダッシュボード（日本語）
+//==========================================================
+function renderAdmin(){
+  const app=document.getElementById('app');
+  app.innerHTML=`
+  <div style="background:#fff;border-bottom:1px solid #E5E7EB;position:sticky;top:0;z-index:50;">
+    <div class="dashboard-container" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="gradient-pink" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;">Y</div>
+        <div>
+          <h1 style="font-size:15px;font-weight:700;margin:0;">候補者セルフ診断ダッシュボード</h1>
+          <p style="font-size:11px;color:#6B7280;margin:0;">YSタレント｜介護候補者プロファイル分析</p>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div id="sync-badge" style="display:flex;align-items:center;padding:4px 8px;background:#F9FAFB;border-radius:6px;border:1px solid #E5E7EB;"></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:#E6F4F1;border-radius:6px;border:1px solid #9AD5CB;cursor:pointer;" onclick="doLogout()" title="クリックでログアウト">
+          <span style="font-size:11px;color:#1E7168;font-weight:600;">👤 ${esc(settings.userName||'')}</span>
+          <span style="font-size:10px;color:#1E7168;">↩</span>
+        </div>
+        <button class="btn-secondary" style="font-size:12px;padding:8px 12px;" onclick="syncBoth()" title="サーバーから取得＋ローカル変更を送信">🔄 同期</button>
+        <button class="btn-secondary" style="font-size:12px;padding:8px 12px;" onclick="showImportCode()">📥 コード読込</button>
+        <button class="btn-secondary" style="font-size:12px;padding:8px 12px;" onclick="openCandidateLink()">📱 候補者URL</button>
+        <button class="btn-secondary" style="font-size:12px;padding:8px 12px;" onclick="exportJSON()">💾 書出</button>
+        <button class="btn-secondary" style="font-size:12px;padding:8px 12px;background:#E6F4F1;border-color:#9AD5CB;" onclick="openSettings()">⚙ 設定</button>
+      </div>
+    </div>
+    <div class="dashboard-container" style="padding:0 16px;display:flex;gap:24px;border-top:1px solid #E5E7EB;">
+      <button onclick="setView('list')" style="padding:12px 0;border:none;background:none;font-size:13px;cursor:pointer;color:${currentView==='list'?'#2A9D8F':'#6B7280'};font-weight:${currentView==='list'?700:500};border-bottom:2px solid ${currentView==='list'?'#2A9D8F':'transparent'};">📋 提出一覧</button>
+      <button onclick="setView('matrix')" style="padding:12px 0;border:none;background:none;font-size:13px;cursor:pointer;color:${currentView==='matrix'?'#2A9D8F':'#6B7280'};font-weight:${currentView==='matrix'?700:500};border-bottom:2px solid ${currentView==='matrix'?'#2A9D8F':'transparent'};">🔗 相性マトリクス</button>
+      <button onclick="setView('members')" style="padding:12px 0;border:none;background:none;font-size:13px;cursor:pointer;color:${currentView==='members'?'#2A9D8F':'#6B7280'};font-weight:${currentView==='members'?700:500};border-bottom:2px solid ${currentView==='members'?'#2A9D8F':'transparent'};">👥 既存メンバー</button>
+      <button onclick="setView('guide')" style="padding:12px 0;border:none;background:none;font-size:13px;cursor:pointer;color:${currentView==='guide'?'#2A9D8F':'#6B7280'};font-weight:${currentView==='guide'?700:500};border-bottom:2px solid ${currentView==='guide'?'#2A9D8F':'transparent'};">📖 使い方</button>
+    </div>
+  </div>
+  <div class="dashboard-container" style="padding:20px 16px;">${
+    currentId?renderDetail():
+    currentView==='list'?renderListView():
+    currentView==='matrix'?renderMatrixView():
+    currentView==='members'?renderMembersView():
+    renderGuideView()
+  }</div>`;
+  setTimeout(initCharts,50);
+}
+
+function setView(v){currentView=v;currentId=null;render();}
+function showDetail(id){currentId=id;render();}
+
+function dedupSubmissions(subs){
+  if(!subs||subs.length===0)return [];
+  const sorted=[...subs].sort((a,b)=>String(b.submittedAt||'').localeCompare(String(a.submittedAt||'')));
+  const seen={};
+  return sorted.filter(s=>{
+    if(!s)return false;
+    const nm=String(s.name||'').toLowerCase().trim();
+    const em=String(s.email||'').toLowerCase().trim();
+    const k=nm+'|'+em;
+    if(!k.trim())return true;
+    if(seen[k])return false;
+    seen[k]=true;return true;
+  });
+}
+function calcOvertimeStats(s){
+  if(!s||!s.timing)return{count:0,avg:0,total:0};
+  let count=0,sum=0,total=0;
+  Object.entries(s.timing).forEach(([qid,t])=>{
+    const q=QUESTIONS.find(x=>x.id===qid);
+    if(!q)return;
+    total++;
+    sum+=t;
+    const limit=q.sec==='9'?8:15;
+    if(t>limit)count++;
+  });
+  return{count,avg:total>0?Math.round((sum/total)*10)/10:0,total};
+}
+
+function dedupCleanup(){
+  const before=state.submissions.length;
+  const ded=dedupSubmissions(state.submissions);
+  const removed=before-ded.length;
+  if(removed===0){alert('重複は見つかりませんでした');return;}
+  if(!confirm(removed+'件の重複を削除します。続行しますか？'))return;
+  state.submissions=ded;saveState();render();alert(removed+'件削除しました');
+}
+
+function renderListView(){
+  if(state.submissions.length===0)return `
+    <div class="card" style="text-align:center;padding:40px 20px;">
+      <div style="font-size:48px;margin-bottom:12px;">📋</div>
+      <h3 style="margin:0 0 8px;">提出データがまだありません</h3>
+      <p style="font-size:13px;color:#6B7280;margin:0 0 20px;">候補者がスマホで診断を完了すると、ここに表示されます。</p>
+      <button class="btn-primary" onclick="openCandidateLink()">候補者URLを開く / QR表示</button>
+    </div>`;
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;margin:0 0 4px;">提出一覧</h2>
+        <p style="font-size:13px;color:#6B7280;margin:0;">候補者が提出したセルフ診断結果（${dedupSubmissions(state.submissions).length}名 / 全${state.submissions.length}件） <button class="btn-secondary" style="font-size:11px;padding:4px 10px;margin-left:8px;" onclick="dedupCleanup()">🧹 重複整理</button></p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;">
+    ${dedupSubmissions(state.submissions).map(s=>{
+      const sc=calcScores(s.answers);
+      const total=avg(Object.values(sc.traits));
+      const flags=detectFlags(sc,(typeof s!=="undefined"?s.answers:null));
+      return `
+      <div class="card" style="cursor:pointer;" onclick="showDetail('${s.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+          <div>
+            <h3 style="margin:0;font-size:15px;font-weight:700;">${esc(s.name)}</h3>
+            <p style="margin:2px 0 0;font-size:11px;color:#9CA3AF;">${esc(s.email||'')}</p>
+            <p style="margin:2px 0 0;font-size:10px;color:#9CA3AF;">${new Date(s.submittedAt).toLocaleString('ja-JP')}</p>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:22px;font-weight:800;color:#2A9D8F;">${total.toFixed(1)}</div>
+            <div style="font-size:10px;color:#9CA3AF;">総合 /10</div>
+          </div>
+        </div>
+        <div class="score-bar-bg" style="margin-bottom:10px;"><div class="score-bar-fill" style="width:${total*10}%;"></div></div>
+        ${flags.length>0?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">${flags.slice(0,3).map(f=>`<span class="tag tag-${f.level==='red'?'red':'yellow'}">${esc(f.label)}</span>`).join('')}${flags.length>3?`<span class="tag tag-gray">+${flags.length-3}</span>`:''}</div>`:'<div style="font-size:11px;color:#10B981;font-weight:600;">✓ 主要リスクなし</div>'}
+        ${(()=>{const ot=calcOvertimeStats(s);if(ot.total===0)return '';const overpct=ot.count/ot.total*100;const t=overpct>40?'red':overpct>20?'yellow':'green';const label=overpct>40?'熟考型（直感弱）':overpct>20?'やや熟考型':'直感型';return `<div style="margin-top:6px;font-size:10px;color:#6B7280;">⏱ 平均${ot.avg}秒 / 超過${ot.count}問 <span class="tag tag-${t}" style="font-size:9px;padding:1px 6px;margin-left:4px;">${label}</span></div>`;})()}
+      </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function renderDetail(){
+  const s=state.submissions.find(x=>x.id===currentId);
+  if(!s)return `<button onclick="setView('list')" style="color:#2A9D8F;background:none;border:none;cursor:pointer;">← 一覧に戻る</button><p>見つかりません</p>`;
+  const sc=calcScores(s.answers);
+  const total=avg(Object.values(sc.traits));
+  const flags=detectFlags(sc,(typeof s!=="undefined"?s.answers:null));
+  // 会社フィルタを適用
+  const compatFilter=loadCompatFilter();
+  const allCompanies=[...new Set(state.members.map(m=>m.company||'(未設定)'))];
+  // フィルタが空 or 全部false の場合は全表示、trueが1つでもあれば選択されたものだけ
+  const hasFilter=Object.values(compatFilter).some(v=>v===true);
+  const filteredMembers=hasFilter?state.members.filter(m=>compatFilter[m.company||'(未設定)']):state.members;
+  const compats=filteredMembers.map(m=>({m,r:calcCompatibility(sc,m)})).sort((a,b)=>b.r.score-a.r.score);
+  // セクションごとに回答整理
+  const bySection={};
+  QUESTIONS.forEach(q=>{
+    if(!bySection[q.sec])bySection[q.sec]=[];
+    bySection[q.sec].push(q);
+  });
+
+  return `
+  <div style="margin-bottom:16px;" class="no-print">
+    <button onclick="setView('list')" style="color:#2A9D8F;background:none;border:none;cursor:pointer;font-size:13px;">← 一覧に戻る</button>
+    <button class="btn-secondary" style="float:right;font-size:12px;padding:6px 12px;" onclick="window.print()">🖨 印刷 / PDF</button>
+    <button class="btn-secondary" style="float:right;font-size:12px;padding:6px 12px;margin-right:6px;color:#DC2626;border-color:#FECACA;" onclick="deleteSubmission('${s.id}')">削除</button>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:start;">
+      <div>
+        <h2 style="font-size:22px;font-weight:800;margin:0 0 4px;">${esc(s.name)}</h2>
+        <p style="font-size:13px;color:#6B7280;margin:0 0 2px;">${esc(s.email||'')}</p>
+        <p style="font-size:11px;color:#9CA3AF;margin:0;">提出: ${new Date(s.submittedAt).toLocaleString('ja-JP')}</p>
+      </div>
+      <div style="text-align:center;background:#E6F4F1;padding:12px 20px;border-radius:12px;">
+        <div style="font-size:11px;color:#1E7168;font-weight:600;">総合スコア</div>
+        <div style="font-size:32px;font-weight:800;color:#2A9D8F;line-height:1;">${total.toFixed(1)}</div>
+        <div style="font-size:11px;color:#1E7168;">/ 10</div>
+      </div>
+    </div>
+  </div>
+
+  ${flags.length>0?`
+  <div class="card" style="margin-bottom:16px;border-left:4px solid #F59E0B;">
+    <h3 style="font-size:14px;font-weight:700;margin:0 0 8px;">⚠ 自動検出リスクフラグ</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">${flags.map(f=>`<span class="tag tag-${f.level==='red'?'red':'yellow'}">${esc(f.label)}</span>`).join('')}</div>
+  </div>`:''}
+
+  ${(()=>{const dt=getDriveType(sc.drives||{money:25,prestige:25,freedom:25,relation:25});return `
+  <div class="card" style="margin-bottom:16px;border-left:4px solid ${DRIVES[dt.type].color};">
+    <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:12px;">
+      <div style="flex:1;min-width:240px;">
+        <p style="font-size:11px;color:#9CA3AF;margin:0 0 4px;font-weight:600;">🔍 深層動機タイプ（即答10問より）</p>
+        <h3 style="font-size:18px;font-weight:800;margin:0 0 4px;color:${DRIVES[dt.type].color};">${dt.ja}　<span style="font-size:13px;color:#6B7280;font-weight:600;">(${dt.pct}%)</span></h3>
+        <p style="font-size:12px;color:#4B5563;margin:0 0 10px;">${dt.desc}</p>
+        ${Object.entries(sc.drives||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+          <div style="margin-bottom:6px;">
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">
+              <span>${DRIVES[k].ja}</span><span style="font-weight:600;">${v.toFixed(0)}%</span>
+            </div>
+            <div class="score-bar-bg"><div style="height:100%;background:${DRIVES[k].color};width:${v}%;"></div></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </div>`;})()}
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;" id="grid-charts">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;">📊 14特性レーダーチャート</h3>
+      <canvas id="trait-radar" data-scores='${JSON.stringify(sc.traits)}'></canvas>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;">📈 特性スコア（高い順）</h3>
+      ${Object.entries(sc.traits).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+            <span>${TRAITS[k].ja}</span><span style="font-weight:600;">${v.toFixed(1)}</span>
+          </div>
+          <div class="score-bar-bg"><div class="score-bar-fill" style="width:${v*10}%;"></div></div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <h3 style="font-size:14px;font-weight:700;margin:0;">🔗 既存メンバーとの相性 <span style="font-size:11px;color:#9CA3AF;font-weight:400;">(${compats.length}名 / 全${state.members.length}名)</span></h3>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="font-size:11px;color:#6B7280;">🏢 会社で絞込:</span>
+        ${allCompanies.map(c=>{
+          const on=hasFilter?!!compatFilter[c]:true;
+          return `<button onclick="toggleCompatCompany('${esc(c)}')" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid ${on?'#2A9D8F':'#D1D5DB'};background:${on?'#E6F4F1':'#fff'};color:${on?'#1E7168':'#9CA3AF'};cursor:pointer;font-weight:${on?'600':'400'};">${on?'✓':' '} ${esc(c)}</button>`;
+        }).join('')}
+        ${hasFilter?`<button onclick="resetCompatFilter()" style="font-size:11px;padding:4px 8px;border:none;background:transparent;color:#6B7280;cursor:pointer;text-decoration:underline;">全表示に戻す</button>`:''}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;">
+    ${compats.map(({m,r})=>{
+      const color=r.score>=8?'green':r.score>=6?'blue':r.score>=4?'yellow':'red';
+      const bg=r.score>=8?'#D1FAE5':r.score>=6?'#DBEAFE':r.score>=4?'#FEF3C7':'#FEE2E2';
+      return `
+      <div style="border:1px solid #E5E7EB;border-radius:10px;padding:12px;background:${bg};">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px;">
+          <div>
+            <strong style="font-size:14px;">${esc(m.name)}</strong>
+            <span style="font-size:11px;color:#6B7280;">（${esc(m.company)}）</span>
+            ${m.isBenchmark?'<span class="tag tag-green" style="margin-left:4px;">★基準</span>':''}
+          </div>
+          <div style="font-size:18px;font-weight:800;color:#1F2937;">${r.score.toFixed(1)}<span style="font-size:11px;color:#9CA3AF;">/10</span></div>
+        </div>
+        ${r.positives.length>0?`<p style="font-size:11px;color:#065F46;margin:6px 0 2px;"><strong>👍</strong> ${r.positives.join('、')}</p>`:''}
+        ${r.risks.length>0?`<p style="font-size:11px;color:#991B1B;margin:2px 0;"><strong>⚠</strong> ${r.risks.join('、')}</p>`:''}
+        <p style="font-size:11px;color:#374151;margin:6px 0 0;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);"><strong>推奨:</strong> ${r.advice}</p>
+      </div>`;
+    }).join('')}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;">📝 セルフ回答詳細</h3>
+    ${Object.keys(SECTIONS).map(secKey=>{
+      const qs=bySection[secKey]||[];
+      const sec=SECTIONS[secKey];
+      return `
+        <details ${secKey==='9'?'open':''} style="margin-bottom:8px;">
+          <summary style="cursor:pointer;font-weight:600;font-size:13px;padding:8px 0;">${sec.icon} ${sec.ja} (${sec.id})</summary>
+          <div style="padding-left:8px;border-left:3px solid #9AD5CB;">
+            ${qs.map(q=>{
+              const a=s.answers[q.id];
+              let answer='<em style="color:#9CA3AF;">未回答</em>';
+              if(q.type==='text'){if(a)answer=`<div style="white-space:pre-wrap;background:#F9FAFB;padding:8px;border-radius:6px;">${esc(a)}</div>`;}
+              else if(a!=null){const o=q.options[a];if(o)answer=`${esc(o.id)}<br><span style="color:#9CA3AF;font-size:11px;">${esc(o.ja)}</span>`;}
+              return `<div style="padding:8px 0;border-bottom:1px solid #F3F4F6;font-size:12px;">
+                <div style="color:#6B7280;font-weight:600;margin-bottom:4px;">Q. ${esc(q.text.ja)}</div>
+                <div>A. ${answer}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </details>
+      `;
+    }).join('')}
+  </div>
+
+  <div class="card" style="background:#EFF6FF;border-color:#BFDBFE;">
+    <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;color:#1E40AF;">💡 顧客向けアドバイス案（自動生成）</h3>
+    <div style="font-size:13px;line-height:1.7;color:#1F2937;white-space:pre-wrap;">${generateAdvice(sc,compats,flags)}</div>
+    <p style="font-size:11px;color:#9CA3AF;margin:12px 0 0;border-top:1px solid #BFDBFE;padding-top:8px;">※ FTIスタッフの観察結果と合わせて、最終的なアドバイスを作成してください。</p>
+  </div>`;
+}
+
+function generateAdvice(sc,compats,flags){
+  const t=sc.traits;const r=sc.risks;const d=sc.drives||{};
+  const top3=Object.entries(t).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>TRAITS[k].ja);
+  const bot3=Object.entries(t).sort((a,b)=>a[1]-b[1]).slice(0,3).map(([k])=>TRAITS[k].ja);
+  const bestMatch=compats[0];
+  const dt=getDriveType(d);
+  let advice='';
+  advice+=`【強み】${top3.join('、')}\n`;
+  advice+=`【弱み】${bot3.join('、')}\n`;
+  advice+=`【深層動機】${dt.ja}（${dt.pct}%） — ${dt.desc}\n\n`;
+
+  // 動機ドライブ別のマネジメント提案
+  if(dt.type==='money'){
+    advice+=`【マネジメント】金銭ドライブ型：給与・残業手当・昇給制度を明確に示すと長期定着が見込めます。逆に他社からの好条件オファーには弱いので、定期的な待遇見直しを。\n`;
+  }else if(dt.type==='prestige'){
+    advice+=`【マネジメント】承認ドライブ型：成果を明示的に褒め、社内表彰の対象に。叱責は人前を避け個別に。プライドが折れると一気に弱るタイプ。\n`;
+  }else if(dt.type==='freedom'){
+    advice+=`【マネジメント】自由ドライブ型：厳格な細則よりも目標管理型で。裁量を与えて任せると伸びます。逆に過度なマイクロマネジメントは離脱リスク。\n`;
+  }else if(dt.type==='relation'){
+    advice+=`【マネジメント】関係ドライブ型：チーム配属で力を発揮。先輩・同僚との関係構築を支援することが定着の鍵。孤立すると一気に弱る。\n`;
+  }
+
+  if(flags.filter(f=>f.level==='red').length>0){
+    advice+=`\n【要確認】以下のリスクフラグが検出されています：\n`;
+    flags.filter(f=>f.level==='red').forEach(f=>advice+=`  ・${f.label}\n`);
+    advice+=`現地FTIスタッフによる追加面談で背景を確認することを推奨します。\n`;
+  }
+  if(bestMatch&&bestMatch.r.score>=6){
+    advice+=`\n【配属推奨】${bestMatch.m.name}様（${bestMatch.m.company}）との相性が最も良好です（${bestMatch.r.score.toFixed(1)}/10）。${bestMatch.r.advice}\n`;
+  }
+  if(r.revenge>6){advice+=`【見返し心リスク】高め。叱責や指導の伝え方に注意（人前ではなく個別に）。\n`;}
+  if(r.impulse>6){advice+=`【衝動性リスク】高め。認知症ケア・同じ訴えの繰り返し対応でストレスを溜めやすい。\n`;}
+  if(t.long>=7){advice+=`【長期就労意欲】高い（${t.long.toFixed(1)}/10）。継続雇用のシナリオで投資が回収しやすい候補者です。\n`;}
+  else if(t.long<5){advice+=`【長期就労意欲】低めの可能性あり（${t.long.toFixed(1)}/10）。入国前に動機の再確認、入国後の早期フォローを推奨します。\n`;}
+  if(t.resil<5){advice+=`【ストレス耐性】低めです。夜勤・看取りなど負荷の高い場面への配慮と、失敗時の励まし体制を準備してください。\n`;}
+  if(t.careAcc<5){advice+=`【介助受容性】低め（${t.careAcc.toFixed(1)}/10）。排泄介助等への抵抗感の可能性。入国前に業務内容の丁寧な説明と実習を推奨します。\n`;}
+  if(t.empathy>=7){advice+=`【共感性】高い（${t.empathy.toFixed(1)}/10）。利用者との信頼関係を築きやすい介護向きの資質です。\n`;}
+  if(r.alc>6){advice+=`【飲酒リスク】高め。寮配置時に飲酒頻度の高い既存メンバーとは別グループ推奨。\n`;}
+  return advice||'特記事項なし。一般的な受入プロセスで問題ありません。';
+}
+
+function getAllPeople(){
+  const people=[];
+  state.submissions.forEach(s=>{
+    const sc=calcScores(s.answers);
+    people.push({id:'c:'+s.id,refId:s.id,type:'candidate',name:s.name,subtitle:'候補者',traits:sc.traits,risks:sc.risks,drives:sc.drives});
+  });
+  state.members.forEach(m=>{
+    people.push({id:'m:'+m.id,refId:m.id,type:'member',name:m.name,subtitle:m.company+(m.isBenchmark?' ★':''),isBenchmark:m.isBenchmark,traits:m.traits,risks:m.risks||{},drives:m.drives||{money:25,prestige:25,freedom:25,relation:25}});
+  });
+  return people;
+}
+
+function calcPairCompat(a,b){
+  let sim=0,total=0;
+  Object.keys(TRAITS).forEach(k=>{
+    const av=a.traits[k]??5,bv=b.traits[k]??5;
+    sim+=10-Math.abs(av-bv);total+=10;
+  });
+  let score=(sim/total)*10;
+  const risks=[],positives=[];
+  const aT=a.traits,bT=b.traits;
+  const aR=a.risks||{},bR=b.risks||{};
+  const aD=a.drives||{},bD=b.drives||{};
+  if((aT.emo??5)<5&&(bT.emo??5)<5){score-=1.5;risks.push('両者とも情緒不安定→衝突リスク');}
+  if((aR.alc||0)>6&&(bR.alc||0)>6){score-=1;risks.push('両者とも飲酒頻度高');}
+  if((aT.clean??5)<5&&(bT.clean??5)<5){score-=1;risks.push('両者とも清潔感低');}
+  if((aT.rule??5)<5&&(bT.rule??5)<5){score-=1;risks.push('両者ともルール意識低');}
+  if((aR.impulse||0)>6&&(bR.impulse||0)>6){score-=1.5;risks.push('両者とも衝動性高');}
+  if((aR.revenge||0)>6&&(bR.revenge||0)>6){score-=1.5;risks.push('両者とも見返し心強');}
+  if((aD.prestige||0)>40&&(bD.prestige||0)>40){score-=1;risks.push('両者ともプライド型');}
+  if((aD.money||0)>45&&(bD.money||0)>45){score-=0.5;risks.push('両者とも金銭志向過剰');}
+  if(a.isBenchmark||b.isBenchmark){
+    const other=a.isBenchmark?b:a;
+    if((other.traits.consc??5)>=6)positives.push('ベンチマーク役の指導を受けやすい');
+  }
+  if((aT.comm??5)>=7&&(bT.comm??5)<5)positives.push(esc(a.name)+'のコミュ力が補完');
+  if((bT.comm??5)>=7&&(aT.comm??5)<5)positives.push(esc(b.name)+'のコミュ力が補完');
+  if((aT.long??5)>=8&&(bT.long??5)>=7)positives.push('双方が長期就労意欲');
+  if((aD.relation||0)>35&&(bD.relation||0)>35)positives.push('双方が関係ドライブ型');
+  score=Math.max(1,Math.min(10,score));
+  let advice;
+  if(score>=8)advice='相性◎ 同寮・近接配置を強く推奨';
+  else if(score>=6)advice='相性○ 問題なし、近接配置可';
+  else if(score>=4)advice='相性△ 初期1ヶ月は密に観察';
+  else advice='相性× 別配置を強く推奨';
+  return{score,sim:sim/total,risks,positives,advice};
+}
+
+let matcherSel={};
+function toggleMatcherSel(id){if(matcherSel[id])delete matcherSel[id];else matcherSel[id]=true;render();}
+function matcherSelectAll(type){const ppl=getAllPeople();ppl.forEach(p=>{if(!type||p.type===type)matcherSel[p.id]=true;});render();}
+function matcherClearAll(){matcherSel={};render();}
+
+function renderMatrixView(){
+  const all=getAllPeople();
+  if(all.length<2)return `<div class="card" style="text-align:center;padding:40px;"><div style="font-size:48px;margin-bottom:10px;">🔬</div><h3 style="margin:0 0 8px;">相性ラボ</h3><p style="font-size:13px;color:#6B7280;">候補者と既存メンバーを合わせて2名以上必要です。</p></div>`;
+  const cands=all.filter(p=>p.type==='candidate');
+  const mems=all.filter(p=>p.type==='member');
+  const selectedIds=Object.keys(matcherSel).filter(id=>all.find(p=>p.id===id));
+  const selected=selectedIds.map(id=>all.find(p=>p.id===id)).filter(Boolean);
+
+  const personCard=(p)=>{
+    const checked=!!matcherSel[p.id];
+    const bg=p.type==='candidate'?'#E6F4F1':'#DBEAFE';
+    const bd=p.type==='candidate'?'#2A9D8F':'#3B82F6';
+    const ic=p.type==='candidate'?'👤':'⭐';
+    return `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:2px solid ${checked?bd:'#E5E7EB'};background:${checked?bg:'#fff'};border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" ${checked?'checked':''} onchange="toggleMatcherSel('${p.id}')" style="width:16px;height:16px;cursor:pointer;"><span style="font-size:14px;">${ic}</span><div style="flex:1;min-width:0;"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.name)}</div><div style="font-size:10px;color:#6B7280;">${esc(p.subtitle)}</div></div></label>`;
+  };
+
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <div><h2 style="font-size:20px;font-weight:700;margin:0 0 4px;">🔬 相性ラボ</h2><p style="font-size:13px;color:#6B7280;margin:0;">候補者・既存メンバーを自由に組み合わせて相性をチェック</p></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn-secondary" style="font-size:11px;padding:6px 10px;" onclick="matcherSelectAll('candidate')">候補者全選択</button>
+        <button class="btn-secondary" style="font-size:11px;padding:6px 10px;" onclick="matcherSelectAll('member')">既存全選択</button>
+        <button class="btn-secondary" style="font-size:11px;padding:6px 10px;" onclick="matcherSelectAll(null)">全員選択</button>
+        <button class="btn-secondary" style="font-size:11px;padding:6px 10px;color:#DC2626;border-color:#FECACA;" onclick="matcherClearAll()">クリア</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <div class="card">
+        <h3 style="font-size:13px;font-weight:700;margin:0 0 10px;color:#1E7168;">👤 候補者（${cands.length}名）</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;max-height:300px;overflow-y:auto;">${cands.length===0?'<p style="font-size:12px;color:#9CA3AF;">候補者がまだ登録されていません</p>':cands.map(personCard).join('')}</div>
+      </div>
+      <div class="card">
+        <h3 style="font-size:13px;font-weight:700;margin:0 0 10px;color:#1E40AF;">⭐ 既存メンバー（${mems.length}名）</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;max-height:300px;overflow-y:auto;">${mems.map(personCard).join('')}</div>
+      </div>
+    </div>
+    ${selected.length<2?`<div class="card" style="text-align:center;padding:30px;background:#FEF3C7;border-color:#FDE68A;"><p style="font-size:14px;color:#92400E;margin:0;">📌 上のリストから<strong>2名以上</strong>選択すると、相性マトリクスが表示されます</p><p style="font-size:11px;color:#92400E;margin:8px 0 0;">現在: ${selected.length} 名選択中</p></div>`:`
+    <div class="card" style="overflow-x:auto;">
+      <h3 style="font-size:14px;font-weight:700;margin:0 0 10px;">📊 相性マトリクス（${selected.length}名 × ${selected.length}名）</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="border-bottom:2px solid #E5E7EB;"><th style="text-align:left;padding:10px;font-size:11px;color:#6B7280;">人物名</th>${selected.map(p=>`<th style="padding:8px;text-align:center;font-size:11px;min-width:80px;"><div style="font-weight:700;">${p.type==='candidate'?'👤':'⭐'} ${esc(p.name)}</div><div style="font-size:9px;color:#9CA3AF;font-weight:400;">${esc(p.subtitle)}</div></th>`).join('')}<th style="padding:8px;text-align:center;background:#F9FAFB;font-size:11px;">平均</th></tr></thead>
+        <tbody>${selected.map(pa=>{
+          const rows=selected.map(pb=>pa.id===pb.id?null:calcPairCompat(pa,pb));
+          const avg=rows.filter(r=>r).reduce((a,r)=>a+r.score,0)/(rows.filter(r=>r).length||1);
+          return `<tr style="border-bottom:1px solid #F3F4F6;"><td style="padding:8px;font-weight:600;font-size:12px;">${pa.type==='candidate'?'👤':'⭐'} ${esc(pa.name)}<br><span style="font-size:10px;color:#9CA3AF;font-weight:400;">${esc(pa.subtitle)}</span></td>${rows.map((r,i)=>{
+            if(!r)return `<td style="padding:6px;"><div style="text-align:center;padding:8px;background:#F3F4F6;color:#9CA3AF;border-radius:6px;">─</div></td>`;
+            const bg=r.score>=8?'#D1FAE5':r.score>=6?'#DBEAFE':r.score>=4?'#FEF3C7':'#FEE2E2';
+            const col=r.score>=8?'#065F46':r.score>=6?'#1E40AF':r.score>=4?'#92400E':'#991B1B';
+            const pb=selected[i];
+            return `<td style="padding:4px;"><div onclick="showPairDetail('${pa.id}','${pb.id}')" style="text-align:center;padding:8px;background:${bg};color:${col};border-radius:6px;font-weight:700;cursor:pointer;" title="クリックで詳細">${r.score.toFixed(1)}</div></td>`;
+          }).join('')}<td style="padding:8px;text-align:center;background:#F9FAFB;font-weight:700;">${avg.toFixed(1)}</td></tr>`;
+        }).join('')}</tbody>
+      </table>
+      <p style="margin-top:12px;font-size:11px;color:#6B7280;">セルをクリックすると2人の詳細な相性分析が表示されます。</p>
+    </div>
+    <div style="margin-top:14px;background:#F9FAFB;border-radius:8px;padding:12px;">
+      <h4 style="font-size:12px;font-weight:700;margin:0 0 6px;">🏆 おすすめペア（相性スコア順）</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;">${(()=>{
+        const pairs=[];
+        for(let i=0;i<selected.length;i++){
+          for(let j=i+1;j<selected.length;j++){
+            const r=calcPairCompat(selected[i],selected[j]);
+            pairs.push({a:selected[i],b:selected[j],r});
+          }
+        }
+        return pairs.sort((x,y)=>y.r.score-x.r.score).slice(0,6).map(({a,b,r})=>{
+          const bg=r.score>=8?'#D1FAE5':r.score>=6?'#DBEAFE':r.score>=4?'#FEF3C7':'#FEE2E2';
+          return `<div style="background:${bg};padding:8px 10px;border-radius:6px;font-size:11px;cursor:pointer;" onclick="showPairDetail('${a.id}','${b.id}')"><strong>${esc(a.name)}</strong> × <strong>${esc(b.name)}</strong> <span style="float:right;font-weight:700;">${r.score.toFixed(1)}</span></div>`;
+        }).join('');
+      })()}</div>
+    </div>`}
+  `;
+}
+
+function showPairDetail(aId,bId){
+  const all=getAllPeople();
+  const a=all.find(p=>p.id===aId);
+  const b=all.find(p=>p.id===bId);
+  if(!a||!b)return;
+  const r=calcPairCompat(a,b);
+  const traitRows=Object.entries(TRAITS).map(([k,v])=>{
+    const av=a.traits[k]??5,bv=b.traits[k]??5;
+    const diff=Math.abs(av-bv);
+    const color=diff<=2?'#10B981':diff<=4?'#F59E0B':'#EF4444';
+    return `<tr style="border-bottom:1px solid #F3F4F6;"><td style="padding:6px 8px;font-size:11px;">${v.ja}</td><td style="padding:6px;text-align:center;font-weight:600;font-size:12px;">${av.toFixed(1)}</td><td style="padding:6px;text-align:center;font-size:11px;color:${color};">↔ ${diff.toFixed(1)}</td><td style="padding:6px;text-align:center;font-weight:600;font-size:12px;">${bv.toFixed(1)}</td></tr>`;
+  }).join('');
+  const html=`<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()"><div class="card" style="max-width:620px;width:100%;" onclick="event.stopPropagation()"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px;"><div><h2 style="margin:0;font-size:18px;font-weight:700;">${a.type==='candidate'?'👤':'⭐'} ${esc(a.name)} × ${b.type==='candidate'?'👤':'⭐'} ${esc(b.name)}</h2><p style="margin:4px 0 0;font-size:11px;color:#9CA3AF;">${esc(a.subtitle)} × ${esc(b.subtitle)}</p></div><div style="text-align:center;background:#E6F4F1;padding:10px 18px;border-radius:10px;"><div style="font-size:10px;color:#1E7168;">相性スコア</div><div style="font-size:28px;font-weight:800;color:#2A9D8F;line-height:1;">${r.score.toFixed(1)}</div><div style="font-size:10px;color:#1E7168;">/10</div></div></div><div style="background:#F9FAFB;padding:10px;border-radius:8px;margin-bottom:14px;"><p style="margin:0;font-size:13px;font-weight:600;">💡 ${esc(r.advice)}</p></div>${r.positives.length>0?`<div style="background:#D1FAE5;padding:10px;border-radius:8px;margin-bottom:10px;"><p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#065F46;">👍 良い点</p>${r.positives.map(p=>`<p style="margin:2px 0;font-size:12px;color:#065F46;">・${esc(p)}</p>`).join('')}</div>`:''}${r.risks.length>0?`<div style="background:#FEE2E2;padding:10px;border-radius:8px;margin-bottom:14px;"><p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#991B1B;">⚠ リスク</p>${r.risks.map(p=>`<p style="margin:2px 0;font-size:12px;color:#991B1B;">・${esc(p)}</p>`).join('')}</div>`:''}<h4 style="font-size:13px;font-weight:700;margin:14px 0 6px;">📊 特性比較</h4><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F9FAFB;border-bottom:2px solid #E5E7EB;"><th style="padding:6px;text-align:left;font-size:10px;color:#6B7280;">特性</th><th style="padding:6px;text-align:center;font-size:10px;color:#6B7280;">${esc(a.name).slice(0,8)}</th><th style="padding:6px;text-align:center;font-size:10px;color:#6B7280;">差</th><th style="padding:6px;text-align:center;font-size:10px;color:#6B7280;">${esc(b.name).slice(0,8)}</th></tr></thead><tbody>${traitRows}</tbody></table><button class="btn-primary btn-block" style="margin-top:14px;" onclick="this.closest('[style*=fixed]').remove()">閉じる</button></div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function renderMembersView(){
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;margin:0 0 4px;">既存メンバー（マスター）</h2>
+        <p style="font-size:13px;color:#6B7280;margin:0;">相性計算の基準となる既存メンバー（${state.members.length}名）。サンプル初期データ（実メンバーに置き換えてください）。</p>
+      </div>
+      <button class="btn-primary" style="font-size:13px;padding:10px 16px;" onclick="addMember()">＋ メンバー追加</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;">
+    ${state.members.map(m=>`
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:start;">
+          <div>
+            <h3 style="margin:0;font-size:15px;font-weight:700;">${esc(m.name)} ${m.isBenchmark?'<span class="tag tag-green">★基準</span>':''}</h3>
+            <p style="margin:2px 0 0;font-size:11px;color:#9CA3AF;">${esc(m.company)}</p>
+          </div>
+          <button class="btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="editMember('${m.id}')">編集</button>
+        </div>
+        <canvas style="margin-top:10px;" data-member-id="${m.id}" data-scores='${JSON.stringify(m.traits)}'></canvas>
+        <p style="font-size:11px;color:#6B7280;margin:8px 0 0;">${esc(m.notes||'')}</p>
+      </div>
+    `).join('')}
+    </div>`;
+}
+
+let guideLang='ja';
+function setGuideLang(l){guideLang=l;render();}
+function renderGuideView(){
+  const isJa=guideLang==='ja';
+  return `
+  <div class="card" style="max-width:820px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <h2 style="font-size:20px;font-weight:700;margin:0;">${isJa?'使い方ガイド':'Panduan Penggunaan'}</h2>
+      <div style="display:flex;background:#F3F4F6;border-radius:8px;padding:3px;">
+        <button onclick="setGuideLang('ja')" style="padding:6px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:${isJa?'#fff':'transparent'};color:${isJa?'#2A9D8F':'#6B7280'};">🇯🇵 日本語</button>
+        <button onclick="setGuideLang('id')" style="padding:6px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:${!isJa?'#fff':'transparent'};color:${!isJa?'#2A9D8F':'#6B7280'};">🇮🇩 Bahasa Indonesia</button>
+      </div>
+    </div>
+    ${isJa?renderGuideJa():renderGuideId()}
+  </div>`;
+}
+
+function renderGuideJa(){
+  return `
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">🎯 このアプリの目的</h3>
+    <p style="font-size:14px;line-height:1.7;">面接1回だけでは見えにくい候補者の<strong>傾向・性格・背景・深層動機</strong>を、本人がスマホで直接回答することで把握。FTI観察評価と組み合わせて、入国後の配属判断と顧客向けアドバイスを生成します。</p>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">📋 ワークフロー</h3>
+    <ol style="font-size:14px;line-height:1.7;padding-left:20px;">
+      <li><strong>候補者URLを共有</strong>：右上「📱 候補者URL」ボタンでURL取得→WhatsAppで送信</li>
+      <li><strong>候補者がスマホで入力</strong>：インドネシア語で回答（約12〜15分）</li>
+      <li><strong>自動同期</strong>：バックエンド設定があれば自動でダッシュボードに反映</li>
+      <li><strong>分析・配属判断</strong>：相性スコア・リスクフラグ・顧客向けアドバイスを参考に判断</li>
+    </ol>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">🧠 質問設計のポリシー</h3>
+    <ul style="font-size:14px;line-height:1.7;padding-left:20px;">
+      <li><strong>直接的な質問は避ける</strong>（自己申告は当てにならないため）</li>
+      <li><strong>シナリオ・行動・生活習慣</strong>から間接的に特性を推定</li>
+      <li><strong>即答セクション（10問）</strong>では仕事と関係ない問いで深層動機を露わに</li>
+    </ul>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">📊 14特性</h3>
+    <ul style="font-size:13px;line-height:1.6;columns:2;padding-left:18px;">
+      ${Object.entries(TRAITS).map(([k,v])=>`<li><strong>${v.ja}</strong>（${v.id}）</li>`).join('')}
+    </ul>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">⚠ 自動リスクフラグ</h3>
+    <p style="font-size:13px;line-height:1.6;">特定の特性が一定値を下回るか、リスク指標が高い場合に自動表示。</p>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">🔒 データ保管・同期</h3>
+    <p style="font-size:13px;line-height:1.6;">Google Sheetsに保存され全担当者で共有。60秒ごとに自動同期。</p>
+  `;
+}
+
+function renderGuideId(){
+  return `
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">🎯 Tujuan Aplikasi Ini</h3>
+    <p style="font-size:14px;line-height:1.7;">Untuk memahami <strong>kecenderungan, kepribadian, latar belakang, dan motivasi mendalam</strong> kandidat yang sulit terlihat hanya dari satu wawancara, kandidat sendiri menjawab langsung melalui ponsel. Hasilnya digabungkan dengan evaluasi observasi staf FTI untuk menghasilkan keputusan penempatan dan saran kepada klien.</p>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">📋 Alur Kerja</h3>
+    <ol style="font-size:14px;line-height:1.7;padding-left:20px;">
+      <li><strong>Bagikan URL kandidat</strong>: Klik tombol "📱 候補者URL" di kanan atas, lalu kirim ke kandidat lewat WhatsApp</li>
+      <li><strong>Kandidat mengisi di ponsel</strong>: Menjawab dalam Bahasa Indonesia (sekitar 12-15 menit)</li>
+      <li><strong>Sinkronisasi otomatis</strong>: Jawaban langsung muncul di dashboard</li>
+      <li><strong>Analisis & keputusan penempatan</strong>: Gunakan skor kecocokan, flag risiko, dan saran ke klien</li>
+    </ol>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">🧠 Filosofi Desain Pertanyaan</h3>
+    <ul style="font-size:14px;line-height:1.7;padding-left:20px;">
+      <li><strong>Hindari pertanyaan langsung</strong> (laporan diri tidak dapat diandalkan)</li>
+      <li><strong>Skenario, perilaku, kebiasaan hidup</strong> untuk menyimpulkan sifat secara tidak langsung</li>
+      <li><strong>Bagian Jawaban Cepat (10 pertanyaan)</strong> mengungkap motivasi mendalam</li>
+      <li>Contoh: "Yang paling Anda benci?" "Jika hanya satu yang bisa didapat?" — jawaban langsung dari insting</li>
+    </ul>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">📊 14 Sifat (Traits)</h3>
+    <ul style="font-size:13px;line-height:1.6;columns:2;padding-left:18px;">
+      ${Object.entries(TRAITS).map(([k,v])=>`<li><strong>${v.id}</strong>（${v.ja}）</li>`).join('')}
+    </ul>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">⚠ Flag Risiko Otomatis</h3>
+    <p style="font-size:13px;line-height:1.6;">Ditampilkan otomatis jika sifat tertentu di bawah ambang batas atau indikator risiko tinggi.</p>
+
+    <h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;">🔒 Penyimpanan & Sinkronisasi Data</h3>
+    <p style="font-size:13px;line-height:1.6;">Data disimpan di Google Sheets dan dibagikan dengan semua anggota tim.</p>
+
+    <div style="margin-top:24px;padding:12px;background:#E6F4F1;border-radius:8px;font-size:11px;color:#1E7168;line-height:1.6;">
+      <strong>📌 Catatan untuk staf FTI:</strong><br>
+      Setelah login, gunakan menu di header untuk melihat daftar kandidat, mengevaluasi anggota existing, atau melihat matriks kecocokan. Setiap edit Anda akan tersinkronisasi ke tim YS Talent di Jepang dalam 60 detik.
+    </div>
+  `;
+}
+
+//==========================================================
+// 補助関数
+//==========================================================
+function avg(arr){return arr.reduce((a,b)=>a+b,0)/arr.length;}
+function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+function openSettings(){
+  const html=`
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">
+      <div class="card" style="max-width:560px;width:100%;" onclick="event.stopPropagation()">
+        <h3 style="margin:0 0 4px;font-size:18px;font-weight:700;">⚙ 設定</h3>
+        <p style="font-size:11px;color:#6B7280;margin:0 0 14px;">チームで共有するための同期設定</p>
+
+        <div style="background:#E6F4F1;padding:10px;border-radius:8px;margin-bottom:14px;">
+          <p style="font-size:12px;color:#1E7168;margin:0;font-weight:600;">📌 データ共有について</p>
+          <p style="font-size:11px;color:#6B7280;margin:4px 0 0;line-height:1.5;">データはSupabase(認証付きデータベース)で安全に共有されます。閲覧・編集にはYST管理者が発行したアカウントでのログインが必要です。</p>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label class="label">👤 あなたの名前（編集履歴に表示されます）<span style="color:#DC2626;">*</span></label>
+          <input class="input" id="set-user" value="${esc(settings.userName||'')}" placeholder="例: 石橋 / 前田 / FTI Andi">
+        </div>
+
+
+
+        <div style="background:#F9FAFB;padding:10px;border-radius:6px;margin-bottom:14px;font-size:11px;color:#4B5563;line-height:1.5;">
+          <strong>現在の状態：</strong><br>
+          ${sb?'🔐 Supabase接続: <span style="color:#059669;">設定済み</span>':'🔌 バックエンド未設定（ローカル保存のみ）'}<br>
+          ${sb?(sbSession?'👤 ログイン中: '+esc(sbSession.user?.email||''):'<span style="color:#DC2626;">未認証</span>'):''}${sb?'<br>':''}
+          最終同期: ${sync.lastPullAt?sync.lastPullAt.toLocaleString('ja-JP')+'（pull）':'未同期'}<br>
+          ${sync.error?'<span style="color:#DC2626;">エラー: '+esc(sync.error)+'</span>':''}
+        </div>
+
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary" style="flex:1;" onclick="this.closest('[style*=fixed]').remove()">キャンセル</button>
+          <button class="btn-primary" style="flex:2;" onclick="saveSettingsFromForm()">保存して同期</button>
+        </div>
+
+          <summary style="cursor:pointer;font-size:12px;color:#6B7280;">⚙ 詳細・トラブルシューティング</summary>
+          <div style="font-size:11px;color:#4B5563;line-height:1.6;padding:8px 0 0;">
+            <p><strong>同期エラーが出る場合：</strong></p>
+            <ul style="padding-left:18px;margin:4px 0;">
+              <li>一度ログアウトして再ログイン（セッション期限切れの可能性）</li>
+              <li>通信環境を確認</li>
+              <li>解決しない場合はYST管理者(石橋)へ連絡</li>
+            </ul>
+            <button class="btn-secondary" style="font-size:11px;padding:6px 10px;margin-top:6px;" onclick="testBackend()">🧪 接続テスト</button>
+            <button class="btn-secondary" style="font-size:11px;padding:6px 10px;margin-top:6px;color:#DC2626;border-color:#FECACA;" onclick="if(confirm('全データをリセットしますか？'))resetLocal()">🗑 ローカルデータ削除</button>
+          </div>
+        </details>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function saveSettingsFromForm(){
+  const name=document.getElementById('set-user').value.trim();
+  if(!name){alert('お名前を入力してください');return;}
+  settings.userName=name;
+  saveSettings();
+  document.querySelector('[style*=fixed]').remove();
+  if(sb&&sbSession){syncPull().then(()=>render());}else{render();}
+}
+
+async function testBackend(){
+  if(!sb){alert('Supabaseが未設定です(CONFIG.supabaseUrl / supabaseAnonKey)');return;}
+  if(!sbSession){alert('ログインセッションがありません。一度ログアウトして再ログインしてください。');return;}
+  try{
+    const [s,m]=await Promise.all([
+      sb.from('submissions').select('*',{count:'exact',head:true}),
+      sb.from('members').select('*',{count:'exact',head:true})
+    ]);
+    if(s.error)throw new Error(s.error.message);
+    if(m.error)throw new Error(m.error.message);
+    alert('✓ 接続OK\nデータベース内:\n候補者 '+(s.count||0)+'件\nメンバー '+(m.count||0)+'件');
+  }catch(e){alert('✗ 接続エラー: '+e.message);}
+}
+
+function resetLocal(){
+  localStorage.removeItem(STORAGE_KEY);
+  state={submissions:[],members:seedMembers()};
+  saveState();
+  document.querySelector('[style*=fixed]').remove();
+  render();
+}
+
+function openCandidateLink(){
+  const url=location.origin+location.pathname+'?mode=quiz';
+  const html=`
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;" onclick="this.remove()">
+      <div class="card" style="max-width:420px;width:90%;" onclick="event.stopPropagation()">
+        <h3 style="margin:0 0 12px;">📱 候補者URL</h3>
+        <p style="font-size:12px;color:#6B7280;margin:0 0 10px;">このURLをWhatsAppで候補者へ送信してください：</p>
+        <input class="input" readonly value="${url}" style="font-size:12px;" onclick="this.select()">
+        <button class="btn-primary btn-block" style="margin-top:10px;" onclick="navigator.clipboard.writeText('${url}');this.textContent='✓ コピー完了'">📋 URLをコピー</button>
+        <p style="font-size:11px;color:#9CA3AF;margin:10px 0 0;">※ 診断結果は完了と同時に自動送信され、この管理画面に反映されます。</p>
+        <button class="btn-secondary btn-block" style="margin-top:8px;" onclick="this.closest('[style*=fixed]').remove()">閉じる</button>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function showImportCode(){
+  const html=`
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;" onclick="this.remove()">
+      <div class="card" style="max-width:520px;width:90%;" onclick="event.stopPropagation()">
+        <h3 style="margin:0 0 12px;">📥 送信コード読込</h3>
+        <p style="font-size:12px;color:#6B7280;margin:0 0 10px;">候補者から受け取った送信コードを貼り付けてください：</p>
+        <textarea class="textarea" id="import-code" rows="6" placeholder="ここにコードを貼り付け..." style="font-family:monospace;font-size:11px;"></textarea>
+        <button class="btn-primary btn-block" style="margin-top:10px;" onclick="importCode()">読込</button>
+        <button class="btn-secondary btn-block" style="margin-top:8px;" onclick="this.closest('[style*=fixed]').remove()">閉じる</button>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function importCode(){
+  const code=document.getElementById('import-code').value.trim();
+  if(!code){alert('コードを入力してください');return;}
+  try{
+    const payload=JSON.parse(decodeURIComponent(escape(atob(code))));
+    if(!payload.n||!payload.a)throw new Error('invalid');
+    const submission={id:uuid(),submittedAt:payload.t||new Date().toISOString(),name:payload.n,email:payload.e||'',answers:payload.a};
+    state.submissions.push(submission);
+    saveState();
+    document.querySelector('[style*=fixed]').remove();
+    setView('list');
+    alert('読込完了：'+payload.n);
+  }catch(e){alert('コードの形式が不正です: '+e.message);}
+}
+
+async function deleteSubmission(id){
+  if(!confirm('この提出を削除しますか？'))return;
+  state.submissions=state.submissions.filter(s=>s.id!==id);
+  saveState();
+  if(sb&&sbSession){
+    const {error}=await sb.from('submissions').delete().eq('id',id);
+    if(error)alert('サーバー側の削除に失敗しました: '+error.message);
+  }
+  setView('list');
+}
+
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='yst-kaigo-assess-'+new Date().toISOString().slice(0,10)+'.json';a.click();
+  URL.revokeObjectURL(url);
+}
+
+function addMember(){
+  const name=prompt('新規メンバー名（漢字 or カタカナ）：');
+  if(!name)return;
+  const company=prompt('所属施設（特養さくら園 / グループホームひまわり など）：')||'';
+  const m={id:uuid(),name,company,traits:{},risks:{},drives:{money:25,prestige:25,freedom:25,relation:25},notes:''};
+  Object.keys(TRAITS).forEach(k=>m.traits[k]=5);
+  Object.keys(RISKS).forEach(k=>m.risks[k]=3);
+  state.members.push(m);saveState();render();
+}
+
+function editMember(id){
+  const m=state.members.find(x=>x.id===id);if(!m)return;
+  const html=`
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;overflow-y:auto;padding:20px;" onclick="if(event.target===this)this.remove()">
+      <div class="card" style="max-width:520px;width:100%;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
+        <h3 style="margin:0 0 12px;">${esc(m.name)} の編集</h3>
+        <div style="margin-bottom:10px;"><label class="label">名前</label><input class="input" value="${esc(m.name)}" onchange="m_update('${m.id}','name',this.value)"></div>
+        <div style="margin-bottom:10px;"><label class="label">所属企業</label><input class="input" value="${esc(m.company)}" onchange="m_update('${m.id}','company',this.value)"></div>
+        <div style="margin-bottom:10px;"><label class="label">備考</label><textarea class="textarea" rows="2" onchange="m_update('${m.id}','notes',this.value)">${esc(m.notes||'')}</textarea></div>
+        <h4 style="font-size:13px;font-weight:700;margin:14px 0 8px;">特性スコア (0-10)</h4>
+        ${Object.entries(TRAITS).map(([k,v])=>`
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <label style="flex:1;font-size:12px;">${v.ja}</label>
+            <input type="range" min="0" max="10" step="0.5" value="${m.traits[k]||5}" oninput="m_setTrait('${m.id}','${k}',this.value);this.nextSibling.textContent=this.value">
+            <span style="font-size:12px;width:30px;text-align:right;font-weight:600;">${m.traits[k]||5}</span>
+          </div>`).join('')}
+        <h4 style="font-size:13px;font-weight:700;margin:14px 0 8px;">リスク指標 (0-10)</h4>
+        ${Object.entries(RISKS).map(([k,v])=>`
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <label style="flex:1;font-size:12px;">${v.ja}</label>
+            <input type="range" min="0" max="10" step="0.5" value="${m.risks[k]||3}" oninput="m_setRisk('${m.id}','${k}',this.value);this.nextSibling.textContent=this.value">
+            <span style="font-size:12px;width:30px;text-align:right;font-weight:600;">${m.risks[k]||3}</span>
+          </div>`).join('')}
+        <h4 style="font-size:13px;font-weight:700;margin:14px 0 8px;">動機ドライブ (%) — 合計100%</h4>
+        ${Object.entries(DRIVES).map(([k,v])=>`
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <label style="flex:1;font-size:12px;color:${v.color};">${v.ja}</label>
+            <input type="range" min="0" max="100" step="5" value="${(m.drives||{})[k]||25}" oninput="m_setDrive('${m.id}','${k}',this.value);this.nextSibling.textContent=this.value+'%'">
+            <span style="font-size:12px;width:40px;text-align:right;font-weight:600;">${(m.drives||{})[k]||25}%</span>
+          </div>`).join('')}
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button class="btn-secondary" style="flex:1;color:#DC2626;border-color:#FECACA;" onclick="m_delete('${m.id}');this.closest('[style*=fixed]').remove()">削除</button>
+          <button class="btn-primary" style="flex:2;" onclick="this.closest('[style*=fixed]').remove();render()">完了</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+function m_update(id,k,v){const m=state.members.find(x=>x.id===id);if(m){m[k]=v;saveState();}}
+function m_setTrait(id,k,v){const m=state.members.find(x=>x.id===id);if(m){m.traits[k]=parseFloat(v);saveState();}}
+function m_setRisk(id,k,v){const m=state.members.find(x=>x.id===id);if(m){m.risks[k]=parseFloat(v);saveState();}}
+function m_setDrive(id,k,v){const m=state.members.find(x=>x.id===id);if(m){if(!m.drives)m.drives={};m.drives[k]=parseFloat(v);saveState();}}
+async function m_delete(id){
+  if(!confirm('削除しますか？'))return;
+  state.members=state.members.filter(x=>x.id!==id);
+  saveState();
+  if(sb&&sbSession){
+    const {error}=await sb.from('members').delete().eq('id',id);
+    if(error)alert('サーバー側の削除に失敗しました: '+error.message);
+  }
+  render();
+}
+
+function initCharts(){
+  document.querySelectorAll('canvas[data-scores]').forEach(c=>{
+    if(c._chart)c._chart.destroy();
+    const scores=JSON.parse(c.dataset.scores);
+    const labels=Object.keys(scores).map(k=>TRAITS[k]?TRAITS[k].ja:k);
+    const data=Object.values(scores);
+    c._chart=new Chart(c,{
+      type:'radar',
+      data:{labels,datasets:[{label:'スコア',data,backgroundColor:'rgba(42,157,143,.2)',borderColor:'#2A9D8F',borderWidth:2,pointBackgroundColor:'#2A9D8F',pointRadius:3}]},
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{r:{min:0,max:10,beginAtZero:true,ticks:{stepSize:2,backdropColor:'transparent',font:{size:9}},pointLabels:{font:{size:10}}}}}
+    });
+  });
+}
+
+// 起動: Supabaseセッションを復元してから初回描画
+(async function boot(){
+  if(sb){
+    try{
+      const {data}=await sb.auth.getSession();
+      sbSession=data&&data.session?data.session:null;
+      sb.auth.onAuthStateChange((_ev,session)=>{sbSession=session||null;});
+    }catch(e){console.error('Session restore failed:',e);}
+  }
+  render();
+  if(MODE==='admin'&&isLoggedIn()&&sb){syncPull(true).then(()=>render());}
+  updateSyncBadge();
+})();
+</script>
+</body>
+</html>
